@@ -192,11 +192,22 @@ export function resolveEffects(req: RequestSnapshot, toState: RequestState, meta
         timers: [],
       };
 
+    // The three refund-pending states schedule an immediate REFUND_EXECUTE
+    // job: the poller calls PaymentsPort.refund and, on provider
+    // confirmation, transitions to REFUNDED (which writes the ledger row).
     case 'DECLINED':
-      return { ledger: [], notifications: [toClient(req, 'DECLINED_CLIENT', { refCode: req.refCode })], timers: [] };
+      return {
+        ledger: [],
+        notifications: [toClient(req, 'DECLINED_CLIENT', { refCode: req.refCode })],
+        timers: [{ jobType: 'REFUND_EXECUTE', runAt: now }],
+      };
 
     case 'EXPIRED':
-      return { ledger: [], notifications: [toClient(req, 'EXPIRED_CLIENT', { refCode: req.refCode })], timers: [] };
+      return {
+        ledger: [],
+        notifications: [toClient(req, 'EXPIRED_CLIENT', { refCode: req.refCode })],
+        timers: [{ jobType: 'REFUND_EXECUTE', runAt: now }],
+      };
 
     case 'NO_SHOW_PROFESSIONAL':
       return {
@@ -208,7 +219,7 @@ export function resolveEffects(req: RequestSnapshot, toState: RequestState, meta
             currency: req.currency,
           }),
         ],
-        timers: [],
+        timers: [{ jobType: 'REFUND_EXECUTE', runAt: now }],
       };
 
     case 'REFUNDED':

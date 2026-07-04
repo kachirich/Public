@@ -238,6 +238,38 @@ export function REBOOK_PROMPT(p: RebookPromptPayload): string {
   return `Hope your session ${p.refCode} went well! You can book the same professional again any time from the app.`;
 }
 
+// ---------- conversational glue (professional-facing) ----------
+
+export interface WhichRequestPayload {
+  refCodes: string[];
+}
+
+export function WHICH_REQUEST(p: WhichRequestPayload): string {
+  return [
+    `You have ${p.refCodes.length} pending requests. Which one do you mean?`,
+    ...p.refCodes.map((r) => `Reply 1 for #${r} — or include the code, e.g. "#${r} 1"`),
+  ].join('\n');
+}
+
+export interface RepromptPayload {
+  refCode: string;
+  hint: string;
+}
+
+export function REPROMPT(p: RepromptPayload): string {
+  return `Sorry, I didn't catch that for #${p.refCode}. ${p.hint}`;
+}
+
+export interface StatusSummaryPayload {
+  refCode: string;
+  state: string;
+  moneyLine: string;
+}
+
+export function STATUS_SUMMARY(p: StatusSummaryPayload): string {
+  return `Request #${p.refCode} is ${p.state.replace(/_/g, ' ').toLowerCase()}. ${p.moneyLine}`;
+}
+
 // ---------- registry ----------
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -258,6 +290,9 @@ export const TEMPLATES: Record<string, (payload: any) => string> = {
   SESSION_END_WARNING,
   PAYOUT_CONFIRMED,
   REBOOK_PROMPT,
+  WHICH_REQUEST,
+  REPROMPT,
+  STATUS_SUMMARY,
 };
 
 // TemplateRenderer for the outbox dispatcher.

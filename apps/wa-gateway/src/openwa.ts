@@ -19,9 +19,11 @@ export class OpenWaError extends Error {
   }
 }
 
-// +2547XXXXXXXX -> 2547XXXXXXXX@c.us
-export function toChatId(e164: string): string {
-  return `${e164.replace(/^\+/, '')}@c.us`;
+// +2547XXXXXXXX -> 2547XXXXXXXX@c.us. Ids that already carry a WhatsApp
+// suffix (group ids like 1234-5678@g.us) pass through untouched.
+export function toChatId(e164OrChatId: string): string {
+  if (e164OrChatId.includes('@')) return e164OrChatId;
+  return `${e164OrChatId.replace(/^\+/, '')}@c.us`;
 }
 
 export class OpenWaClient {

@@ -1,24 +1,76 @@
-import { ChannelRouterMessagingPort, EmailAdapter, TelegramAdapter, WaGatewayMessagingAdapter } from '@marketplace/adapters';
-import { renderTemplate, type MessageChannel, type MessagingPort } from '@marketplace/core';
+import {
+  CalcomAdapter,
+  ChannelRouterMessagingPort,
+  EmailAdapter,
+  PaystackAdapter,
+  TelegramAdapter,
+  WaGatewayMessagingAdapter,
+  WaGatewayRoomsAdapter,
+} from '@marketplace/adapters';
+import {
+  renderTemplate,
+  type MessageChannel,
+  type MessagingPort,
+  type PaymentsPort,
+  type RoomsPort,
+  type SchedulingPort,
+} from '@marketplace/core';
 import pg from 'pg';
 import { loadConfig, type OrchestratorConfig } from './config.js';
+import type { AppDeps } from './deps.js';
 import { buildServer } from './server.js';
+import { PLATFORM_DEFAULT_PRICES } from './services/pricing.js';
+import { buildTimerHandlers } from './timer-handlers.js';
 import { startWorkers } from './workers.js';
 
 const config = loadConfig();
-const app = buildServer();
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 
-// Channels with a configured provider get the real adapter; the rest fall
-// back to a log-only adapter in dev so the outbox loop still runs.
-function buildMessaging(cfg: OrchestratorConfig): MessagingPort {
+// Unconfigured providers fail loudly on use instead of pretending: quotes
+// need Cal.com, payments need Paystack. Messaging alone gets a dev-log
+// fallback so the outbox loop still runs locally.
+function unconfigured<T extends object>(name: string): T {
+  return new Proxy({} as T, {
+    get(_t, prop) {
+      if (prop === 'verifyWebhookSignature') return () => false;
+      return () => Promise.reject(new Error(`${name} is not configured (missing env vars)`));
+    },
+  });
+}
+
+function buildDeps(cfg: OrchestratorConfig): AppDeps {
+  const scheduling: SchedulingPort =
+    cfg.CALCOM_API_URL && cfg.CALCOM_API_KEY
+      ? new CalcomAdapter({ baseUrl: cfg.CALCOM_API_URL, apiKey: cfg.CALCOM_API_KEY })
+      : unconfigured('CalcomAdapter');
+  const payments: PaymentsPort = cfg.PAYSTACK_SECRET_KEY
+    ? new PaystackAdapter({
+        secretKey: cfg.PAYSTACK_SECRET_KEY,
+        ...(cfg.PAYSTACK_CALLBACK_URL ? { callbackUrl: cfg.PAYSTACK_CALLBACK_URL } : {}),
+      })
+    : unconfigured('PaystackAdapter');
+  const rooms: RoomsPort = cfg.WA_GATEWAY_URL
+    ? new WaGatewayRoomsAdapter({ baseUrl: cfg.WA_GATEWAY_URL, sharedSecret: cfg.INTERNAL_SHARED_SECRET })
+    : unconfigured('WaGatewayRoomsAdapter');
+
+  return {
+    pool,
+    scheduling,
+    payments,
+    rooms,
+    pricing: { defaults: PLATFORM_DEFAULT_PRICES, overrides: {} },
+    sharedSecret: config.INTERNAL_SHARED_SECRET,
+    now: () => new Date(),
+  };
+}
+
+function buildMessaging(cfg: OrchestratorConfig, log: (msg: string) => void): MessagingPort {
   const devLog: MessagingPort = {
     async send(message) {
-      app.log.info({ channel: message.channel, recipient: message.recipient }, 'outbox send (dev log adapter)');
+      log(`outbox send (dev log adapter) ${message.channel} -> ${message.recipient}`);
       return { providerMessageId: `dev-${Date.now()}` };
     },
   };
-
   const routes: Partial<Record<MessageChannel, MessagingPort>> = {
     WHATSAPP: cfg.WA_GATEWAY_URL
       ? new WaGatewayMessagingAdapter({ baseUrl: cfg.WA_GATEWAY_URL, sharedSecret: cfg.INTERNAL_SHARED_SECRET })
@@ -32,11 +84,15 @@ function buildMessaging(cfg: OrchestratorConfig): MessagingPort {
   return new ChannelRouterMessagingPort(routes);
 }
 
+const deps = buildDeps(config);
+const app = buildServer(deps);
+
 const workers = await startWorkers({
   pool,
-  messaging: buildMessaging(config),
+  messaging: buildMessaging(config, (m) => app.log.info(m)),
   render: renderTemplate,
   redisUrl: config.REDIS_URL,
+  timerHandlers: buildTimerHandlers(deps),
 });
 
 app.addHook('onClose', async () => {

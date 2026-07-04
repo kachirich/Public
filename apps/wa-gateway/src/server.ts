@@ -35,6 +35,30 @@ export function buildServer(deps?: ServerDeps): FastifyInstance {
     return { messageId };
   });
 
+  app.post<{ Body: { name: string; participants: string[] } }>('/rooms', async (req, reply) => {
+    if (req.headers['x-internal-secret'] !== deps.sharedSecret) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const { name, participants } = req.body;
+    if (!name || !Array.isArray(participants)) {
+      return reply.code(400).send({ error: 'name and participants are required' });
+    }
+    const { groupId } = await deps.openwa.createGroup(name, participants);
+    return { roomId: groupId };
+  });
+
+  app.post<{ Body: { roomId: string; participants: string[] } }>('/rooms/dissolve', async (req, reply) => {
+    if (req.headers['x-internal-secret'] !== deps.sharedSecret) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const { roomId, participants } = req.body;
+    if (!roomId || !Array.isArray(participants)) {
+      return reply.code(400).send({ error: 'roomId and participants are required' });
+    }
+    await deps.openwa.dissolveGroup(roomId, participants);
+    return { dissolved: true };
+  });
+
   // OpenWA EASY API webhook: onMessage events. Forward raw essentials; the
   // orchestrator owns dedup (wa_message_id) and parsing.
   app.post('/webhook/openwa', async (req, reply) => {

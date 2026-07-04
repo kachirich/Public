@@ -57,6 +57,9 @@ const SAMPLE_PAYLOADS: Record<string, Record<string, unknown>> = {
   SESSION_END_WARNING: { refCode: 'R4X2', minutesLeft: 10 },
   PAYOUT_CONFIRMED: { refCode: 'R4X2', payoutNet: '850.00', currency: 'KES' },
   REBOOK_PROMPT: { refCode: 'R4X2' },
+  WHICH_REQUEST: { refCodes: ['R4X2', 'R7YQ'] },
+  REPROMPT: { refCode: 'R4X2', hint: 'Reply 1 to accept or 2 to decline.' },
+  STATUS_SUMMARY: { refCode: 'R4X2', state: 'REFUNDED', moneyLine: 'Your payment was fully refunded.' },
 };
 
 const PROFESSIONAL_FACING = [

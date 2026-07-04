@@ -50,6 +50,8 @@ exports[`templates > PAYOUT_CONFIRMED snapshot 1`] = `"Session #R4X2 complete. Y
 
 exports[`templates > REBOOK_PROMPT snapshot 1`] = `"Hope your session R4X2 went well! You can book the same professional again any time from the app."`;
 
+exports[`templates > REPROMPT snapshot 1`] = `"Sorry, I didn't catch that for #R4X2. Reply 1 to accept or 2 to decline."`;
+
 exports[`templates > REQUEST_CARD snapshot 1`] = `
 "New session request #R4X2
 
@@ -75,3 +77,11 @@ This room dissolves 30 minutes after the session ends."
 `;
 
 exports[`templates > SESSION_END_WARNING snapshot 1`] = `"Heads up: 10 minutes left in session #R4X2."`;
+
+exports[`templates > STATUS_SUMMARY snapshot 1`] = `"Request #R4X2 is refunded. Your payment was fully refunded."`;
+
+exports[`templates > WHICH_REQUEST snapshot 1`] = `
+"You have 2 pending requests. Which one do you mean?
+Reply 1 for #R4X2 — or include the code, e.g. "#R4X2 1"
+Reply 1 for #R7YQ — or include the code, e.g. "#R7YQ 1""
+`;

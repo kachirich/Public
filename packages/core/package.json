@@ -8,7 +8,8 @@
   "exports": {
     ".": "./dist/index.js",
     "./ports": "./dist/ports/index.js",
-    "./state": "./dist/state/index.js"
+    "./state": "./dist/state/index.js",
+    "./test-helpers": "./dist/test-helpers/db.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

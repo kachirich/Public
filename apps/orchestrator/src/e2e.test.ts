@@ -2,6 +2,7 @@ import {
   dispatchOutbox,
   FakeMessagingPort,
   FakePaymentsPort,
+  FakeRegistryPort,
   FakeRoomsPort,
   FakeSchedulingPort,
   pollTimers,
@@ -50,15 +51,18 @@ beforeEach(async () => {
     scheduling,
     payments,
     rooms,
+    registry: new FakeRegistryPort(),
     pricing: { defaults: { IN_HOURS: '2000.00', OFF_DUTY: '3500.00', OFF_DAY: '5000.00', PREMIUM_INTERRUPT: '8000.00' }, overrides: {} },
     sharedSecret: SECRET,
     now: () => clock.now,
   };
   app = buildServer(deps);
 
+  // Seed data marks test professionals VERIFIED directly (per the phase 7
+  // addendum) — the verification pipeline has its own suite.
   const prof = await pool.query(
-    `INSERT INTO professionals (display_name, whatsapp_e164, calcom_user_id, calcom_event_type, payout_method, fee_percent)
-     VALUES ('Dr Achieng', '+254700000001', 7, 21, '{"type":"MPESA"}', 15.00) RETURNING id`,
+    `INSERT INTO professionals (display_name, whatsapp_e164, calcom_user_id, calcom_event_type, payout_method, fee_percent, verification_status)
+     VALUES ('Dr Achieng', '+254700000001', 7, 21, '{"type":"MPESA"}', 15.00, 'VERIFIED') RETURNING id`,
   );
   professionalId = prof.rows[0].id;
   const client = await pool.query(

@@ -60,6 +60,10 @@ const SAMPLE_PAYLOADS: Record<string, Record<string, unknown>> = {
   WHICH_REQUEST: { refCodes: ['R4X2', 'R7YQ'] },
   REPROMPT: { refCode: 'R4X2', hint: 'Reply 1 to accept or 2 to decline.' },
   STATUS_SUMMARY: { refCode: 'R4X2', state: 'REFUNDED', moneyLine: 'Your payment was fully refunded.' },
+  VERIFICATION_OTP: { code: '482913' },
+  VERIFICATION_APPROVED: { displayName: 'Dr Achieng' },
+  VERIFICATION_REJECTED: { registry: 'KMPDC', attemptsLeft: 2 },
+  VERIFICATION_IN_REVIEW: {},
 };
 
 const PROFESSIONAL_FACING = [

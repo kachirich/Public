@@ -4,6 +4,8 @@ import pg from 'pg';
 import type { RequestState } from '../state/transitions.js';
 
 const SCHEMA_PATH = fileURLToPath(new URL('../../../../schema.sql', import.meta.url));
+const MIGRATIONS_SQL_DIR = new URL('../../../db/migrations/sql/', import.meta.url);
+const EXTRA_MIGRATIONS = ['0002-professional-verification.sql'];
 
 export function testPool(): pg.Pool {
   const url = process.env.DATABASE_URL;
@@ -16,13 +18,22 @@ export async function ensureSchema(pool: pg.Pool): Promise<void> {
   if (!rows[0].t) {
     await pool.query(readFileSync(SCHEMA_PATH, 'utf8'));
   }
+  // Post-schema.sql migrations (CI applies them via node-pg-migrate; local
+  // test databases get them here).
+  const { rows: verif } = await pool.query(`SELECT to_regclass('public.professional_verifications') AS t`);
+  if (!verif[0].t) {
+    for (const file of EXTRA_MIGRATIONS) {
+      await pool.query(readFileSync(fileURLToPath(new URL(file, MIGRATIONS_SQL_DIR)), 'utf8'));
+    }
+  }
 }
 
 export async function truncateAll(pool: pg.Pool): Promise<void> {
   await pool.query(`
     TRUNCATE scheduled_jobs, consult_rooms, webhook_events, inbound_messages,
              outbox_messages, ledger_entries, counter_offer_slots, counter_offers,
-             request_transitions, requests, clients, professionals
+             request_transitions, requests, clients,
+             professional_verifications, professionals
     RESTART IDENTITY CASCADE
   `);
 }

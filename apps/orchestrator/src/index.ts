@@ -12,6 +12,7 @@ import {
   type MessageChannel,
   type MessagingPort,
   type PaymentsPort,
+  type RegistryPort,
   type RoomsPort,
   type SchedulingPort,
 } from '@marketplace/core';
@@ -53,11 +54,17 @@ function buildDeps(cfg: OrchestratorConfig): AppDeps {
     ? new WaGatewayRoomsAdapter({ baseUrl: cfg.WA_GATEWAY_URL, sharedSecret: cfg.INTERNAL_SHARED_SECRET })
     : unconfigured('WaGatewayRoomsAdapter');
 
+  // Registry scraper adapters (KMPDC, LSK, ...) are built per deployment;
+  // until one is wired, submissions land in manual review via the error
+  // path rather than stranding anyone.
+  const registry: RegistryPort = unconfigured('RegistryPort');
+
   return {
     pool,
     scheduling,
     payments,
     rooms,
+    registry,
     pricing: { defaults: PLATFORM_DEFAULT_PRICES, overrides: {} },
     sharedSecret: config.INTERNAL_SHARED_SECRET,
     now: () => new Date(),

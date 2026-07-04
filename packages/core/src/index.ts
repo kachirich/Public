@@ -6,3 +6,4 @@ export * from './parser/index.js';
 export * from './timers/index.js';
 export * from './fakes/index.js';
 export * from './tier/index.js';
+export * from './verification/index.js';

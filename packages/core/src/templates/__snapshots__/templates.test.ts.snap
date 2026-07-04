@@ -80,6 +80,14 @@ exports[`templates > SESSION_END_WARNING snapshot 1`] = `"Heads up: 10 minutes l
 
 exports[`templates > STATUS_SUMMARY snapshot 1`] = `"Request #R4X2 is refunded. Your payment was fully refunded."`;
 
+exports[`templates > VERIFICATION_APPROVED snapshot 1`] = `"Welcome aboard, Dr Achieng! Your registration is verified — you can now receive session requests on this number. Requests arrive as cards you answer by replying 1 (accept) or 2 (decline)."`;
+
+exports[`templates > VERIFICATION_IN_REVIEW snapshot 1`] = `"We're confirming your registration with the registry — this usually takes about 1 business day. We'll message you here as soon as it's done."`;
+
+exports[`templates > VERIFICATION_OTP snapshot 1`] = `"Your verification code is 482913. Enter it on the registration page to confirm this WhatsApp number. It expires in 10 minutes."`;
+
+exports[`templates > VERIFICATION_REJECTED snapshot 1`] = `"We couldn't verify your registration with KMPDC. Please check your registration number and the exact name on your KMPDC record, then resubmit — you have 2 attempts left."`;
+
 exports[`templates > WHICH_REQUEST snapshot 1`] = `
 "You have 2 pending requests. Which one do you mean?
 Reply 1 for #R4X2 — or include the code, e.g. "#R4X2 1"

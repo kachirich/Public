@@ -1,4 +1,4 @@
-import type { PaymentsPort, RoomsPort, SchedulingPort } from '@marketplace/core';
+import type { PaymentsPort, RegistryPort, RoomsPort, SchedulingPort } from '@marketplace/core';
 import type { Pool } from 'pg';
 import type { PricingConfig } from './services/pricing.js';
 
@@ -9,6 +9,7 @@ export interface AppDeps {
   scheduling: SchedulingPort;
   payments: PaymentsPort;
   rooms: RoomsPort;
+  registry: RegistryPort;
   pricing: PricingConfig;
   sharedSecret: string;
   /** Injectable clock so e2e tests can drive timers deterministically. */

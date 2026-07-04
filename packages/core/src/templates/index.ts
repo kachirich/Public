@@ -270,6 +270,41 @@ export function STATUS_SUMMARY(p: StatusSummaryPayload): string {
   return `Request #${p.refCode} is ${p.state.replace(/_/g, ' ').toLowerCase()}. ${p.moneyLine}`;
 }
 
+// ---------- professional verification (phase 7) ----------
+
+export interface VerificationOtpPayload {
+  code: string;
+}
+
+export function VERIFICATION_OTP(p: VerificationOtpPayload): string {
+  return `Your verification code is ${p.code}. Enter it on the registration page to confirm this WhatsApp number. It expires in 10 minutes.`;
+}
+
+export interface VerificationApprovedPayload {
+  displayName: string;
+}
+
+export function VERIFICATION_APPROVED(p: VerificationApprovedPayload): string {
+  return `Welcome aboard, ${p.displayName}! Your registration is verified — you can now receive session requests on this number. Requests arrive as cards you answer by replying 1 (accept) or 2 (decline).`;
+}
+
+export interface VerificationRejectedPayload {
+  registry: string;
+  attemptsLeft: number;
+}
+
+export function VERIFICATION_REJECTED(p: VerificationRejectedPayload): string {
+  const retry =
+    p.attemptsLeft > 0
+      ? `Please check your registration number and the exact name on your ${p.registry} record, then resubmit — you have ${p.attemptsLeft} ${p.attemptsLeft === 1 ? 'attempt' : 'attempts'} left.`
+      : `You have used all resubmission attempts. Contact support to continue.`;
+  return `We couldn't verify your registration with ${p.registry}. ${retry}`;
+}
+
+export function VERIFICATION_IN_REVIEW(): string {
+  return `We're confirming your registration with the registry — this usually takes about 1 business day. We'll message you here as soon as it's done.`;
+}
+
 // ---------- registry ----------
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -293,6 +328,10 @@ export const TEMPLATES: Record<string, (payload: any) => string> = {
   WHICH_REQUEST,
   REPROMPT,
   STATUS_SUMMARY,
+  VERIFICATION_OTP,
+  VERIFICATION_APPROVED,
+  VERIFICATION_REJECTED,
+  VERIFICATION_IN_REVIEW,
 };
 
 // TemplateRenderer for the outbox dispatcher.

@@ -3,6 +3,12 @@ import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './deps.js';
 import { chooseCounterSlot } from './services/accept.js';
 import { confirmQuotePayment, createQuote, initQuotePayment, QuoteError } from './services/quotes.js';
+import {
+  confirmVerificationOtp,
+  decideVerification,
+  pendingVerifications,
+  submitVerification,
+} from './services/verification.js';
 import { handleWaInbound } from './services/wa-inbound.js';
 
 interface QuoteBody {
@@ -110,4 +116,50 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     await chooseCounterSlot(deps, req.params.id, slotId);
     return reply.code(200).send({ accepted: true });
   });
+
+  // ---------- professional verification (phase 7) ----------
+
+  app.post<{ Params: { id: string }; Body: { registry: string; registrationNumber: string; submittedName: string } }>(
+    '/professionals/:id/verifications',
+    async (req, reply) => {
+      const { registry, registrationNumber, submittedName } = req.body ?? {};
+      if (!registry || !registrationNumber || !submittedName) {
+        return reply.code(400).send({ error: 'registry, registrationNumber, submittedName are required' });
+      }
+      const result = await submitVerification(deps, {
+        professionalId: req.params.id,
+        registry: registry as never,
+        registrationNumber,
+        submittedName,
+      });
+      return reply.code(201).send(result);
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { code: string } }>('/verifications/:id/otp', async (req, reply) => {
+    const code = req.body?.code;
+    if (!code) return reply.code(400).send({ error: 'code is required' });
+    return confirmVerificationOtp(deps, req.params.id, code);
+  });
+
+  app.get('/internal/verifications/pending', async (req, reply) => {
+    if (req.headers['x-internal-secret'] !== deps.sharedSecret) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    return { pending: await pendingVerifications(deps) };
+  });
+
+  app.post<{ Params: { id: string }; Body: { decision: 'approve' | 'reject'; reviewedBy: string } }>(
+    '/internal/verifications/:id/decide',
+    async (req, reply) => {
+      if (req.headers['x-internal-secret'] !== deps.sharedSecret) {
+        return reply.code(401).send({ error: 'unauthorized' });
+      }
+      const { decision, reviewedBy } = req.body ?? {};
+      if (!['approve', 'reject'].includes(decision) || !reviewedBy) {
+        return reply.code(400).send({ error: 'decision (approve|reject) and reviewedBy are required' });
+      }
+      return decideVerification(deps, req.params.id, decision, reviewedBy);
+    },
+  );
 }

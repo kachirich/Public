@@ -38,12 +38,17 @@ export async function createQuote(deps: AppDeps, input: CreateQuoteInput): Promi
   }
 
   const { rows: profRows } = await deps.pool.query(
-    `SELECT id, calcom_user_id, fee_percent, is_active FROM professionals WHERE id = $1`,
+    `SELECT id, calcom_user_id, fee_percent, is_active, verification_status FROM professionals WHERE id = $1`,
     [input.professionalId],
   );
   const professional = profRows[0];
   if (!professional) throw new QuoteError(404, 'professional not found');
   if (!professional.is_active) throw new QuoteError(422, 'professional is not accepting requests');
+  // The verification hard gate: this check in core logic is the enforcement
+  // point — non-verified professionals are unbookable regardless of UI.
+  if (professional.verification_status !== 'VERIFIED') {
+    throw new QuoteError(422, 'professional is not verified');
+  }
 
   const dayStart = new Date(input.sessionStart.getTime() - 24 * 3600_000);
   const dayEnd = new Date(input.sessionStart.getTime() + (input.durationMinutes + 24 * 60) * 60_000);

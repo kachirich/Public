@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@marketplace/adapters": "workspace:*",
     "@marketplace/config": "workspace:*",
     "@marketplace/core": "workspace:*",
     "bullmq": "^5.13.0",

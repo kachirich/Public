@@ -1,0 +1,14 @@
+{
+  "name": "@marketplace/db",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "migrate:up": "node-pg-migrate up -m migrations",
+    "migrate:down": "node-pg-migrate down -m migrations",
+    "migrate:create": "node-pg-migrate create -m migrations"
+  },
+  "devDependencies": {
+    "node-pg-migrate": "^7.6.1",
+    "pg": "^8.13.0"
+  }
+}

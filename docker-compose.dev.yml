@@ -1,0 +1,22 @@
+# Local development infrastructure only — the two services run on the host
+# (pnpm dev) so you keep fast rebuilds. Ports are offset (+1) to avoid
+# colliding with anything already bound to 5432/6379.
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: marketplace_dev
+    ports:
+      - '127.0.0.1:5435:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - '127.0.0.1:6380:6379'
+
+volumes:
+  pgdata:

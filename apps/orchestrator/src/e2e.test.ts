@@ -316,6 +316,13 @@ describe('counter-offer path with partial refund', () => {
     await flushOutbox();
     expect(messaging.sent.some((m) => m.recipient === 'brian@example.com' && m.body.includes('proposed alternatives'))).toBe(true);
 
+    // The client UI reads the chooser straight off GET /requests/:id.
+    const statusRes = await app.inject({ method: 'GET', url: `/requests/${requestId}` });
+    const counterOffer = statusRes.json().counterOffer;
+    expect(counterOffer.id).toBe(offers[0].id);
+    expect(counterOffer.slots).toHaveLength(2);
+    expect(counterOffer.slots[0]).toMatchObject({ tier: 'OFF_DUTY', priceGross: '3500.00' });
+
     // Client picks the first slot -> ACCEPTED with a 1500.00 partial refund.
     const choose = await app.inject({
       method: 'POST',
@@ -427,6 +434,24 @@ describe('guardrails', () => {
     expect(await state(requestId)).toBe('DECLINED');
     const { rows } = await pool.query(`SELECT count(*)::int AS n FROM request_transitions WHERE request_id = $1 AND to_state = 'DECLINED'`, [requestId]);
     expect(rows[0].n).toBe(1);
+  });
+
+  it('POST /clients finds-or-creates by email', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/clients',
+      payload: { displayName: 'New Client', email: 'new@example.com', phone: '+254722000001' },
+    });
+    expect(created.statusCode).toBe(201);
+    const { clientId: id } = created.json();
+
+    const found = await app.inject({
+      method: 'POST',
+      url: '/clients',
+      payload: { displayName: 'Same Person', email: 'new@example.com' },
+    });
+    expect(found.statusCode).toBe(200);
+    expect(found.json().clientId).toBe(id);
   });
 
   it('wa-inbound requires the shared secret', async () => {

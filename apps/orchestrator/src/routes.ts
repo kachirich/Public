@@ -27,6 +27,20 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     return reply.code(500).send({ error: 'internal error' });
   });
 
+  // Find-or-create for the web booking flow (no auth system yet; email is
+  // the identity key).
+  app.post<{ Body: { displayName: string; email: string; phone?: string } }>('/clients', async (req, reply) => {
+    const { displayName, email, phone } = req.body ?? {};
+    if (!displayName || !email) return reply.code(400).send({ error: 'displayName and email are required' });
+    const { rows: existing } = await deps.pool.query(`SELECT id FROM clients WHERE email = $1`, [email]);
+    if (existing[0]) return { clientId: existing[0].id };
+    const { rows } = await deps.pool.query(
+      `INSERT INTO clients (display_name, email, phone_e164) VALUES ($1, $2, $3) RETURNING id`,
+      [displayName, email, phone ?? null],
+    );
+    return reply.code(201).send({ clientId: rows[0].id });
+  });
+
   app.post<{ Body: QuoteBody }>('/quotes', async (req, reply) => {
     const { clientId, professionalId, sessionStart, durationMinutes, brief } = req.body ?? ({} as QuoteBody);
     if (!clientId || !professionalId || !sessionStart || !durationMinutes || !brief) {
@@ -94,11 +108,25 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     return { outcome };
   });
 
+  // The addendum's listing rule is enforced here, not in the UI:
+  // non-verified professionals never appear in client-facing responses.
+  app.get('/professionals', async () => {
+    const { rows } = await deps.pool.query(
+      `SELECT id, display_name FROM professionals
+       WHERE is_active AND verification_status = 'VERIFIED'
+       ORDER BY display_name`,
+    );
+    return { professionals: rows };
+  });
+
   app.get<{ Params: { id: string } }>('/requests/:id', async (req, reply) => {
     const { rows } = await deps.pool.query(
-      `SELECT id, ref_code, state, tier, session_start, duration_minutes,
-              currency, price_gross, platform_fee, payout_net, card_expires_at, version, created_at
-       FROM requests WHERE id = $1`,
+      `SELECT r.id, r.ref_code, r.state, r.tier, r.session_start, r.duration_minutes,
+              r.currency, r.price_gross, r.platform_fee, r.payout_net,
+              r.card_expires_at, r.version, r.created_at,
+              p.display_name AS professional_name
+       FROM requests r JOIN professionals p ON p.id = r.professional_id
+       WHERE r.id = $1`,
       [req.params.id],
     );
     if (!rows[0]) return reply.code(404).send({ error: 'request not found' });
@@ -107,7 +135,28 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
        FROM request_transitions WHERE request_id = $1 ORDER BY id`,
       [req.params.id],
     );
-    return { ...rows[0], transitions: history };
+
+    // COUNTER_OFFERED requests carry the proposed slots so the client UI
+    // can render the chooser.
+    let counterOffer = null;
+    if (rows[0].state === 'COUNTER_OFFERED') {
+      const { rows: offers } = await deps.pool.query(
+        `SELECT co.id, co.expires_at,
+                json_agg(json_build_object(
+                  'id', s.id, 'slotStart', s.slot_start,
+                  'durationMinutes', s.duration_minutes,
+                  'tier', s.tier, 'priceGross', s.price_gross::text
+                ) ORDER BY s.slot_start) AS slots
+         FROM counter_offers co
+         JOIN counter_offer_slots s ON s.counter_offer_id = co.id
+         WHERE co.request_id = $1 AND co.resolved_at IS NULL
+         GROUP BY co.id`,
+        [req.params.id],
+      );
+      counterOffer = offers[0] ?? null;
+    }
+
+    return { ...rows[0], transitions: history, counterOffer };
   });
 
   app.post<{ Params: { id: string }; Body: { slotId: string } }>('/counter-offers/:id/choose', async (req, reply) => {

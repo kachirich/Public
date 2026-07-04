@@ -113,6 +113,19 @@ async function quoteAttempt(): Promise<number> {
 // ---------- tests ----------
 
 describe('hard gate at quote time', () => {
+  it('excludes non-verified professionals from the client-facing listing', async () => {
+    const before = await app.inject({ method: 'GET', url: '/professionals' });
+    expect(before.json().professionals).toEqual([]);
+
+    await pool.query(`UPDATE professionals SET verification_status = 'VERIFIED' WHERE id = $1`, [professionalId]);
+    const after = await app.inject({ method: 'GET', url: '/professionals' });
+    expect(after.json().professionals).toEqual([{ id: professionalId, display_name: 'Dr John Kamau' }]);
+
+    await pool.query(`UPDATE professionals SET is_active = false WHERE id = $1`, [professionalId]);
+    const inactive = await app.inject({ method: 'GET', url: '/professionals' });
+    expect(inactive.json().professionals).toEqual([]);
+  });
+
   it('rejects quotes for any professional that is not VERIFIED', async () => {
     expect(await quoteAttempt()).toBe(422); // PENDING_VERIFICATION
 

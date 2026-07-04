@@ -1,0 +1,77 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`templates > ACCEPTED_CLIENT snapshot 1`] = `
+"Your session R4X2 is confirmed for Sat, 1 Aug, 13:00.
+Paid: KES 1000.00 (held in escrow until the session completes).
+A WhatsApp consult room opens 15 minutes before the start."
+`;
+
+exports[`templates > ACCEPTED_PROFESSIONAL snapshot 1`] = `
+"Confirmed #R4X2. Session Sat, 1 Aug, 13:00.
+Payout of KES 850.00 is released after the session completes.
+A WhatsApp consult room opens 15 minutes before the start."
+`;
+
+exports[`templates > CARD_REMINDER snapshot 1`] = `
+"Reminder: request #R4X2 is still waiting.
+Session Sat, 1 Aug, 13:00, you earn KES 850.00.
+It expires Fri, 31 Jul, 17:00. Reply 1 to accept or 2 to decline."
+`;
+
+exports[`templates > COUNTER_CONFIRM_ECHO snapshot 1`] = `
+"You are proposing these times for #R4X2:
+1. Sun, 2 Aug, 17:00 (60 min)
+2. Mon, 3 Aug, 10:30 (60 min)
+
+Reply YES to send them to the client, or NO to start over."
+`;
+
+exports[`templates > COUNTER_PROMPT snapshot 1`] = `
+"No problem — suggest up to 3 alternative times for #R4X2, one per line.
+For example:
+tomorrow 2pm
+Friday 10:30
+Sat 9am"
+`;
+
+exports[`templates > COUNTER_SENT_CLIENT snapshot 1`] = `"The professional can't make your requested time for R4X2 but has proposed alternatives. Open the app to pick one — the offer stays valid for 12 hours."`;
+
+exports[`templates > DECLINED_CLIENT snapshot 1`] = `"Unfortunately the professional can't take session R4X2. Your full payment is being refunded — it usually lands within 2 business days."`;
+
+exports[`templates > EXPIRED_CLIENT snapshot 1`] = `"The professional didn't respond to request R4X2 in time. Your full payment is being refunded — it usually lands within 2 business days."`;
+
+exports[`templates > NO_SHOW_CLIENT_REFUND snapshot 1`] = `"The professional didn't show up for session R4X2. We're sorry — your full payment of KES 1000.00 is being refunded."`;
+
+exports[`templates > NO_SHOW_NUDGE snapshot 1`] = `"Session #R4X2 started 5 minutes ago and you haven't joined the room yet. Please join now — at 15 minutes the session is marked a no-show and refunded."`;
+
+exports[`templates > PARTIAL_REFUND_CLIENT snapshot 1`] = `"Good news: the new time you picked for R4X2 falls in a cheaper rate. We're refunding the KES 250.00 difference."`;
+
+exports[`templates > PAYOUT_CONFIRMED snapshot 1`] = `"Session #R4X2 complete. Your payout of KES 850.00 is on its way."`;
+
+exports[`templates > REBOOK_PROMPT snapshot 1`] = `"Hope your session R4X2 went well! You can book the same professional again any time from the app."`;
+
+exports[`templates > REQUEST_CARD snapshot 1`] = `
+"New session request #R4X2
+
+When: Sat, 1 Aug, 13:00 (60 min)
+Type: off duty
+You earn: KES 850.00
+Brief: Second opinion on an MRI result
+
+Reply:
+1 - Accept
+2 - Decline
+3 - Decline, wrong time (suggest alternatives)
+4 - Decline, need more information
+
+This request expires Fri, 31 Jul, 17:00."
+`;
+
+exports[`templates > ROOM_WELCOME snapshot 1`] = `
+"Welcome to your consult room for #R4X2.
+Brian, meet Dr Achieng.
+The session runs Sat, 1 Aug, 13:00 for 60 minutes.
+This room dissolves 30 minutes after the session ends."
+`;
+
+exports[`templates > SESSION_END_WARNING snapshot 1`] = `"Heads up: 10 minutes left in session #R4X2."`;

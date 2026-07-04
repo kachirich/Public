@@ -1,4 +1,4 @@
-import type { MessagingPort } from '@marketplace/core';
+import { renderTemplate, type MessagingPort } from '@marketplace/core';
 import pg from 'pg';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
@@ -17,14 +17,10 @@ const devLogMessaging: MessagingPort = {
   },
 };
 
-// Placeholder renderer until the phase 4 template functions land.
-const devRender = (templateKey: string, payload: Record<string, unknown>): string =>
-  `[${templateKey}] ${JSON.stringify(payload)}`;
-
 const workers = await startWorkers({
   pool,
   messaging: devLogMessaging,
-  render: devRender,
+  render: renderTemplate,
   redisUrl: config.REDIS_URL,
 });
 

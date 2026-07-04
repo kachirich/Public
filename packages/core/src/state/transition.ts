@@ -20,7 +20,7 @@ export interface TransitionResult {
 
 const SELECT_FOR_UPDATE = `
   SELECT r.id, r.ref_code, r.client_id, r.professional_id, r.tier, r.state,
-         r.session_start, r.duration_minutes, r.currency,
+         r.session_start, r.duration_minutes, r.brief, r.currency,
          r.price_gross, r.platform_fee, r.payout_net,
          r.card_expires_at, r.version,
          p.whatsapp_e164 AS professional_whatsapp,
@@ -63,6 +63,7 @@ export async function transition(
       state: row.state,
       sessionStart: row.session_start,
       durationMinutes: row.duration_minutes,
+      brief: row.brief,
       currency: row.currency,
       priceGross: row.price_gross,
       platformFee: row.platform_fee,

@@ -13,6 +13,7 @@ export interface RequestSnapshot {
   state: RequestState;
   sessionStart: Date;
   durationMinutes: number;
+  brief: string;
   currency: string;
   priceGross: string;
   platformFee: string;
@@ -109,6 +110,7 @@ export function resolveEffects(req: RequestSnapshot, toState: RequestState, meta
             payoutNet: req.payoutNet,
             currency: req.currency,
             expiresAt: req.cardExpiresAt.toISOString(),
+            brief: req.brief,
           }),
         ],
         timers: [

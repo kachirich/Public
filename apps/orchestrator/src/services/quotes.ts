@@ -9,6 +9,7 @@ export interface CreateQuoteInput {
   sessionStart: Date;
   durationMinutes: number;
   brief: string;
+  source?: string;
 }
 
 export interface QuoteResult {
@@ -38,12 +39,13 @@ export async function createQuote(deps: AppDeps, input: CreateQuoteInput): Promi
   }
 
   const { rows: profRows } = await deps.pool.query(
-    `SELECT id, calcom_user_id, fee_percent, is_active, verification_status FROM professionals WHERE id = $1`,
+    `SELECT id, calcom_user_id, fee_percent, is_active, is_available, verification_status FROM professionals WHERE id = $1`,
     [input.professionalId],
   );
   const professional = profRows[0];
   if (!professional) throw new QuoteError(404, 'professional not found');
   if (!professional.is_active) throw new QuoteError(422, 'professional is not accepting requests');
+  if (!professional.is_available) throw new QuoteError(422, 'professional is currently not available for bookings');
   // The verification hard gate: this check in core logic is the enforcement
   // point — non-verified professionals are unbookable regardless of UI.
   if (professional.verification_status !== 'VERIFIED') {
@@ -71,8 +73,8 @@ export async function createQuote(deps: AppDeps, input: CreateQuoteInput): Promi
 
   const { rows } = await deps.pool.query(
     `INSERT INTO requests (ref_code, client_id, professional_id, tier, state, session_start,
-                           duration_minutes, brief, price_gross, platform_fee, payout_net)
-     VALUES ($1, $2, $3, $4, 'REQUESTED', $5, $6, $7, $8, $9, $10) RETURNING id, currency`,
+                           duration_minutes, brief, price_gross, platform_fee, payout_net, source)
+     VALUES ($1, $2, $3, $4, 'REQUESTED', $5, $6, $7, $8, $9, $10, $11) RETURNING id, currency`,
     [
       refCode,
       input.clientId,
@@ -84,6 +86,7 @@ export async function createQuote(deps: AppDeps, input: CreateQuoteInput): Promi
       breakdown.gross,
       breakdown.fee,
       breakdown.net,
+      input.source ?? 'web',
     ],
   );
 
@@ -100,7 +103,7 @@ export async function createQuote(deps: AppDeps, input: CreateQuoteInput): Promi
 
 export async function initQuotePayment(deps: AppDeps, requestId: string): Promise<{ authorizationUrl: string }> {
   const { rows } = await deps.pool.query(
-    `SELECT r.state, r.price_gross, r.currency, c.email AS client_email
+    `SELECT r.state, r.price_gross, r.currency, c.email AS client_email, c.phone_e164 AS client_phone
      FROM requests r JOIN clients c ON c.id = r.client_id WHERE r.id = $1`,
     [requestId],
   );
@@ -114,6 +117,7 @@ export async function initQuotePayment(deps: AppDeps, requestId: string): Promis
     amount: row.price_gross,
     currency: row.currency.trim(),
     clientEmail: row.client_email,
+    ...(row.client_phone ? { clientPhone: row.client_phone } : {}),
   });
 
   await transition(deps.pool, requestId, 'PENDING_PAYMENT', 'CLIENT', 'PAYMENT_INITIATED', { providerRef });

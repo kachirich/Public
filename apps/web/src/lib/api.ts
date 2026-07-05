@@ -4,9 +4,37 @@
 
 const BASE_URL = process.env.ORCHESTRATOR_URL ?? 'http://localhost:3000';
 
+export type ProfessionalCategory = 'DOCTOR' | 'LECTURER' | 'LAWYER' | 'ACCOUNTANT' | 'ENGINEER' | 'THERAPIST';
+
 export interface Professional {
   id: string;
   display_name: string;
+  category: ProfessionalCategory;
+  affiliation: string | null;
+  title: string | null;
+  bio: string | null;
+  location_area: string | null;
+  is_available: boolean;
+  direct_message_fee?: string;
+}
+
+export interface AvailabilitySlot {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+}
+
+export interface ProSession {
+  id: string;
+  ref_code: string;
+  state: string;
+  tier: string;
+  session_start: string;
+  duration_minutes: number;
+  currency: string;
+  payout_net: string;
+  client_name: string;
+  source: string | null;
 }
 
 export interface Transition {
@@ -38,6 +66,8 @@ export interface RequestView {
   payout_net: string;
   card_expires_at: string | null;
   professional_name: string;
+  professional_category: ProfessionalCategory;
+  professional_affiliation: string | null;
   transitions: Transition[];
   counterOffer: { id: string; expires_at: string; slots: CounterSlot[] } | null;
 }
@@ -63,8 +93,67 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function listProfessionals(): Promise<{ professionals: Professional[] }> {
-  return call('/professionals');
+export function listProfessionals(filters: { category?: string; institution?: string } = {}): Promise<{ professionals: Professional[] }> {
+  const params = new URLSearchParams();
+  if (filters.category) params.set('category', filters.category);
+  if (filters.institution) params.set('institution', filters.institution);
+  const qs = params.toString();
+  return call(`/professionals${qs ? `?${qs}` : ''}`);
+}
+
+export function listInstitutions(category?: string): Promise<{ institutions: string[] }> {
+  return call(`/professionals/institutions${category ? `?category=${encodeURIComponent(category)}` : ''}`);
+}
+
+export function getProfessional(id: string): Promise<Professional> {
+  return call(`/professionals/${id}`);
+}
+
+// ---------- professional portal ----------
+
+export function proLoginStart(whatsapp: string): Promise<{ challengeId: string; devCode?: string }> {
+  return call('/pro/login', { method: 'POST', body: JSON.stringify({ whatsapp }) });
+}
+
+export function proLoginVerify(challengeId: string, code: string): Promise<{ professional: Professional }> {
+  return call('/pro/login/verify', { method: 'POST', body: JSON.stringify({ challengeId, code }) });
+}
+
+export function getProAvailability(id: string): Promise<{ consentedAt: string | null; slots: AvailabilitySlot[] }> {
+  return call(`/pro/${id}/availability`);
+}
+
+export function putProAvailability(id: string, consent: boolean, slots: AvailabilitySlot[]): Promise<{ saved: boolean }> {
+  return call(`/pro/${id}/availability`, { method: 'PUT', body: JSON.stringify({ consent, slots }) });
+}
+
+export function listProSessions(id: string): Promise<{ sessions: ProSession[] }> {
+  return call(`/pro/${id}/sessions`);
+}
+
+export function putProStatus(id: string, available: boolean): Promise<{ saved: boolean; available: boolean }> {
+  return call(`/pro/${id}/status`, { method: 'PUT', body: JSON.stringify({ available }) });
+}
+
+export function putProPrivacy(id: string, showLocation: boolean): Promise<{ saved: boolean }> {
+  return call(`/pro/${id}/privacy`, { method: 'PUT', body: JSON.stringify({ showLocation }) });
+}
+
+export function getProSettings(
+  id: string,
+): Promise<{ directMessageFee: string; dmNote: string | null; showLocation: boolean; locationArea: string | null }> {
+  return call(`/pro/${id}/settings`);
+}
+
+export function putProSettings(id: string, settings: { directMessageFee: string; dmNote?: string }): Promise<{ saved: boolean }> {
+  return call(`/pro/${id}/settings`, { method: 'PUT', body: JSON.stringify(settings) });
+}
+
+export function sendDirectMessage(
+  professionalId: string,
+  input: { clientId: string; body: string; source?: string },
+): Promise<{ directMessageId: string; fee: string; currency: string; authorizationUrl: string }> {
+  return call(`/professionals/${professionalId}/messages`, { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function findOrCreateClient(input: { displayName: string; email: string; phone?: string }): Promise<{ clientId: string }> {
@@ -77,6 +166,7 @@ export function createQuote(input: {
   sessionStart: string;
   durationMinutes: number;
   brief: string;
+  source?: string;
 }): Promise<{ requestId: string; refCode: string; tier: string; priceGross: string; currency: string }> {
   return call('/quotes', { method: 'POST', body: JSON.stringify(input) });
 }

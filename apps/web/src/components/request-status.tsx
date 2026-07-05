@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import useSWR from 'swr';
 import type { RequestView } from '@/lib/api';
 import { chooseSlotAction, payAction, type ActionState } from '@/lib/actions';
-import { STATE_COPY, TERMINAL_STATES, formatMoney, formatWhen } from '@/lib/display';
+import { STATE_COPY, TERMINAL_STATES, formatMoney, formatWhen, googleCalendarUrl } from '@/lib/display';
 
 const initial: ActionState = { error: null };
 
@@ -39,7 +39,10 @@ export function RequestStatus({ requestId, initialData }: { requestId: string; i
         <p>{copy.detail}</p>
         <dl className="breakdown">
           <dt>Professional</dt>
-          <dd>{req.professional_name}</dd>
+          <dd>
+            {req.professional_name}
+            {req.professional_affiliation ? ` — ${req.professional_affiliation}` : ''}
+          </dd>
           <dt>When</dt>
           <dd>{formatWhen(req.session_start)} · {req.duration_minutes} min</dd>
           <dt>Price</dt>
@@ -48,6 +51,7 @@ export function RequestStatus({ requestId, initialData }: { requestId: string; i
       </div>
 
       {req.state === 'REQUESTED' && <PayCard requestId={req.id} />}
+      {(req.state === 'ACCEPTED' || req.state === 'IN_SESSION') && <CalendarCard req={req} />}
       {req.state === 'COUNTER_OFFERED' && req.counterOffer && (
         <SlotChooser counterOffer={req.counterOffer} currency={req.currency} onChosen={() => mutate()} />
       )}
@@ -65,6 +69,29 @@ export function RequestStatus({ requestId, initialData }: { requestId: string; i
         </div>
       )}
     </>
+  );
+}
+
+function CalendarCard({ req }: { req: RequestView }) {
+  const gcal = googleCalendarUrl({
+    refCode: req.ref_code,
+    professionalName: req.professional_name,
+    sessionStart: req.session_start,
+    durationMinutes: req.duration_minutes,
+  });
+  return (
+    <div className="card">
+      <h2>Save it to your calendar</h2>
+      <p>Don&apos;t miss your session — add it to the calendar you actually check.</p>
+      <div className="calendar-links">
+        <a className="button-link" href={gcal} target="_blank" rel="noopener noreferrer">
+          Add to Google Calendar
+        </a>
+        <a className="button-link button-secondary" href={`/api/requests/${req.id}/ics`}>
+          Download .ics (Apple / Outlook)
+        </a>
+      </div>
+    </div>
   );
 }
 

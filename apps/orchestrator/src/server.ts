@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { AppDeps } from './deps.js';
+import { registerProRoutes } from './pro-routes.js';
 import { registerRoutes } from './routes.js';
 
 export function buildServer(deps?: AppDeps): FastifyInstance {
@@ -18,7 +19,10 @@ export function buildServer(deps?: AppDeps): FastifyInstance {
 
   app.get('/health', async () => ({ status: 'ok', service: 'orchestrator' }));
 
-  if (deps) registerRoutes(app, deps);
+  if (deps) {
+    registerRoutes(app, deps);
+    registerProRoutes(app, deps);
+  }
 
   return app;
 }

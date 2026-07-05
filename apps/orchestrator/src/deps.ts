@@ -12,6 +12,8 @@ export interface AppDeps {
   registry: RegistryPort;
   pricing: PricingConfig;
   sharedSecret: string;
+  /** Secret path segment for the (unsigned) Daraja callback; absent = mpesa webhook disabled. */
+  mpesaCallbackToken?: string;
   /** Injectable clock so e2e tests can drive timers deterministically. */
   now: () => Date;
 }

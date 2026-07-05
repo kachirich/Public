@@ -15,6 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/" className="brand">
             Professional Access
           </Link>
+          <nav className="header-nav">
+            <Link href="/pro">For professionals</Link>
+          </nav>
         </header>
         <main>{children}</main>
       </body>

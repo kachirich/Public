@@ -64,6 +64,12 @@ const SAMPLE_PAYLOADS: Record<string, Record<string, unknown>> = {
   VERIFICATION_APPROVED: { displayName: 'Dr Achieng' },
   VERIFICATION_REJECTED: { registry: 'KMPDC', attemptsLeft: 2 },
   VERIFICATION_IN_REVIEW: {},
+  DIRECT_MESSAGE: {
+    clientName: 'Wanjiku',
+    body: 'Do you supervise MSc theses in machine learning?',
+    feeLine: 'KES 50.00 paid',
+    note: 'I reply between 5-7pm on weekdays.',
+  },
 };
 
 const PROFESSIONAL_FACING = [

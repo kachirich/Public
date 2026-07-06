@@ -4,11 +4,14 @@
 
 const BASE_URL = process.env.ORCHESTRATOR_URL ?? 'http://localhost:3000';
 
-export type ProfessionalCategory = 'DOCTOR' | 'LECTURER' | 'LAWYER' | 'ACCOUNTANT' | 'ENGINEER' | 'THERAPIST';
+export type ProfessionalCategory = 'DOCTOR' | 'LECTURER' | 'LAWYER' | 'ACCOUNTANT' | 'ENGINEER' | 'THERAPIST' | 'SERVICE';
+export type ProviderType = 'PROFESSIONAL' | 'SERVICE';
 
 export interface Professional {
   id: string;
   display_name: string;
+  business_name?: string | null;
+  provider_type?: ProviderType;
   category: ProfessionalCategory;
   affiliation: string | null;
   title: string | null;
@@ -43,6 +46,7 @@ export interface AvailabilitySlot {
   weekday: number;
   startMinute: number;
   endMinute: number;
+  capacity?: number;
 }
 
 export interface ProSession {
@@ -131,6 +135,15 @@ export function getProfessional(id: string): Promise<Professional> {
 }
 
 // ---------- professional portal ----------
+
+export function proRegister(input: {
+  displayName: string;
+  businessName: string;
+  whatsapp: string;
+  flatPrice?: string;
+}): Promise<{ providerId: string; challengeId: string; devCode?: string }> {
+  return call('/pro/register', { method: 'POST', body: JSON.stringify(input) });
+}
 
 export function proLoginStart(whatsapp: string): Promise<{ challengeId: string; devCode?: string }> {
   return call('/pro/login', { method: 'POST', body: JSON.stringify({ whatsapp }) });

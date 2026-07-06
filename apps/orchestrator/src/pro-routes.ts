@@ -1,19 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './deps.js';
-import { startProLogin, verifyProLogin } from './services/pro-login.js';
+import { registerServiceProvider, startProLogin, verifyProLogin } from './services/pro-login.js';
 
-// Professional portal endpoints. Only VERIFIED professionals get in — the
-// same hard gate the booking path enforces.
+// Provider portal endpoints. PROFESSIONAL rows only get in once VERIFIED —
+// the same hard gate the booking path enforces. SERVICE providers register
+// lightly (no registry verification) and get in while active.
 //
 // Auth model (v1): the portal proves control of the WhatsApp number via the
 // existing OTP machinery in production; in development, knowing the number
 // of a verified professional signs you in. Every mutating route re-checks
-// the professional exists and is verified.
+// the professional exists and is verified or is a service provider.
 //
 // claim_status is a second, orthogonal gate on top of verification_status:
-// a professional can be VERIFIED (publicly bookable) while still UNCLAIMED
-// or HOSPITAL_VERIFIED (nobody has linked an AuthKit account to the row
-// yet). Login/OTP-verify use findVerified — a professional must be
+// a professional/provider can be bookable while still UNCLAIMED or
+// HOSPITAL_VERIFIED (nobody has linked an AuthKit account to the row yet).
+// Login/OTP-verify use findVerified — a professional/provider must be
 // findable and OTP-able before they can claim their row. Every other
 // mutating/reading portal route uses findActivated, which additionally
 // requires claim_status = 'FULLY_ACTIVATED', so an unclaimed profile
@@ -24,6 +25,7 @@ interface AvailabilitySlotBody {
   weekday: number; // 0 = Sunday
   startMinute: number;
   endMinute: number;
+  capacity?: number; // SERVICE only; PROFESSIONAL windows are always capacity 1
 }
 
 const PROFESSIONAL_CATEGORIES = new Set(['DOCTOR', 'LECTURER', 'LAWYER', 'ACCOUNTANT', 'ENGINEER', 'THERAPIST']);
@@ -40,7 +42,7 @@ interface ApplyBody {
   authkitEmail: string;
 }
 
-const PORTAL_COLUMNS = `id, display_name, category, affiliation, title, location_area,
+const PORTAL_COLUMNS = `id, display_name, business_name, provider_type, category, affiliation, title, location_area,
             availability_consent_at, is_available,
             claim_status AS "claimStatus", authkit_user_id AS "authkitUserId",
             verification_status AS "verificationStatus"`;
@@ -49,7 +51,8 @@ async function findVerified(deps: AppDeps, whereSql: string, param: string) {
   const { rows } = await deps.pool.query(
     `SELECT ${PORTAL_COLUMNS}
      FROM professionals
-     WHERE ${whereSql} AND is_active AND verification_status = 'VERIFIED'`,
+     WHERE ${whereSql} AND is_active
+       AND (provider_type = 'SERVICE' OR verification_status = 'VERIFIED')`,
     [param],
   );
   return rows[0];
@@ -59,7 +62,9 @@ async function findActivated(deps: AppDeps, whereSql: string, param: string) {
   const { rows } = await deps.pool.query(
     `SELECT ${PORTAL_COLUMNS}
      FROM professionals
-     WHERE ${whereSql} AND is_active AND verification_status = 'VERIFIED' AND claim_status = 'FULLY_ACTIVATED'`,
+     WHERE ${whereSql} AND is_active
+       AND (provider_type = 'SERVICE' OR verification_status = 'VERIFIED')
+       AND claim_status = 'FULLY_ACTIVATED'`,
     [param],
   );
   return rows[0];
@@ -136,6 +141,35 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
       throw err;
     }
   });
+
+  // Light self-registration for SERVICE providers (salons, garages, field
+  // businesses): name + business + WhatsApp. No registry verification —
+  // the returned OTP challenge proves number ownership, and the provider is
+  // bookable immediately. Admins can deactivate bad actors.
+  app.post<{ Body: { displayName: string; businessName: string; whatsapp: string; flatPrice?: string } }>(
+    '/pro/register',
+    async (req, reply) => {
+      const displayName = req.body?.displayName?.trim();
+      const businessName = req.body?.businessName?.trim();
+      const whatsapp = req.body?.whatsapp?.trim();
+      const flatPrice = req.body?.flatPrice?.trim();
+      if (!displayName || !businessName || !whatsapp) {
+        return reply.code(400).send({ error: 'displayName, businessName and whatsapp are required' });
+      }
+      if (!/^\+\d{9,15}$/.test(whatsapp)) {
+        return reply.code(422).send({ error: 'whatsapp must be in international format, e.g. +2547XXXXXXXX' });
+      }
+      if (flatPrice !== undefined && flatPrice !== '' && !/^\d{1,10}(\.\d{1,2})?$/.test(flatPrice)) {
+        return reply.code(422).send({ error: 'flatPrice must be an amount like 800 or 800.00' });
+      }
+      const result = await registerServiceProvider(
+        deps,
+        { displayName, businessName, whatsapp, ...(flatPrice ? { flatPrice } : {}) },
+        process.env.NODE_ENV !== 'production',
+      );
+      return reply.code(201).send(result);
+    },
+  );
 
   // Two-step OTP login: the code lands on the professional's WhatsApp,
   // proving control of the number before any session exists. Uses
@@ -218,8 +252,8 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
     const pro = await findActivated(deps, 'id = $1', req.params.id);
     if (!pro) return reply.code(404).send({ error: 'professional not found' });
     const { rows } = await deps.pool.query(
-      `SELECT weekday, start_minute AS "startMinute", end_minute AS "endMinute"
-       FROM professional_availability WHERE professional_id = $1 ORDER BY weekday`,
+      `SELECT weekday, start_minute AS "startMinute", end_minute AS "endMinute", capacity
+       FROM professional_availability WHERE professional_id = $1 ORDER BY weekday, start_minute`,
       [req.params.id],
     );
     return { consentedAt: pro.availability_consent_at, slots: rows };
@@ -237,9 +271,19 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
         if (
           !Number.isInteger(s.weekday) || s.weekday < 0 || s.weekday > 6 ||
           !Number.isInteger(s.startMinute) || !Number.isInteger(s.endMinute) ||
-          s.startMinute < 0 || s.endMinute > 1440 || s.endMinute <= s.startMinute
+          s.startMinute < 0 || s.endMinute > 1440 || s.endMinute <= s.startMinute ||
+          (s.capacity !== undefined && (!Number.isInteger(s.capacity) || s.capacity < 1 || s.capacity > 1000))
         ) {
-          return reply.code(400).send({ error: 'each slot needs weekday 0-6 and startMinute < endMinute within the day' });
+          return reply.code(400).send({ error: 'each slot needs weekday 0-6, startMinute < endMinute within the day, and capacity >= 1' });
+        }
+      }
+      // Windows on the same weekday must not overlap (the DB exclusion
+      // constraint is the backstop): occupancy counting assumes exactly one
+      // covering window per instant.
+      const byDay = [...slots].sort((a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute);
+      for (let i = 1; i < byDay.length; i++) {
+        if (byDay[i]!.weekday === byDay[i - 1]!.weekday && byDay[i]!.startMinute < byDay[i - 1]!.endMinute) {
+          return reply.code(422).send({ error: 'windows on the same day must not overlap' });
         }
       }
 
@@ -248,10 +292,13 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
         await client.query('BEGIN');
         await client.query(`DELETE FROM professional_availability WHERE professional_id = $1`, [req.params.id]);
         for (const s of slots) {
+          // PROFESSIONAL windows are strictly single-capacity — the strict
+          // slot semantics are untouched by the SERVICE capacity model.
+          const capacity = pro.provider_type === 'SERVICE' ? (s.capacity ?? 1) : 1;
           await client.query(
-            `INSERT INTO professional_availability (professional_id, weekday, start_minute, end_minute)
-             VALUES ($1, $2, $3, $4)`,
-            [req.params.id, s.weekday, s.startMinute, s.endMinute],
+            `INSERT INTO professional_availability (professional_id, weekday, start_minute, end_minute, capacity)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [req.params.id, s.weekday, s.startMinute, s.endMinute, capacity],
           );
         }
         await client.query(

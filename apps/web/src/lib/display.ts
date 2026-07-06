@@ -64,6 +64,7 @@ export const CATEGORY_COPY: Record<string, { label: string; plural: string; inst
   ACCOUNTANT: { label: 'Accountant', plural: 'Accountants', institution: 'Firm' },
   ENGINEER: { label: 'Engineer', plural: 'Engineers', institution: 'Company' },
   THERAPIST: { label: 'Therapist', plural: 'Therapists', institution: 'Practice' },
+  SERVICE: { label: 'Service', plural: 'Services', institution: 'Business' },
 };
 
 export function categoryLabel(category: string): string {

@@ -194,10 +194,10 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     const category = req.query.category?.toUpperCase();
     const institution = req.query.institution;
     const { rows } = await deps.pool.query(
-      `SELECT id, display_name, category, affiliation, title, bio, is_available,
+      `SELECT id, display_name, business_name, provider_type, category, affiliation, title, bio, is_available,
               CASE WHEN location_consent_at IS NOT NULL THEN location_area END AS location_area
        FROM professionals
-       WHERE is_active AND verification_status = 'VERIFIED'
+       WHERE is_active AND (verification_status = 'VERIFIED' OR provider_type = 'SERVICE')
          AND ($1::text IS NULL OR category = $1::professional_category)
          AND ($2::text IS NULL OR affiliation ILIKE '%' || $2 || '%')
        ORDER BY category, display_name`,
@@ -223,10 +223,11 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   app.get<{ Params: { id: string } }>('/professionals/:id', async (req, reply) => {
     const { rows } = await deps.pool.query(
-      `SELECT id, display_name, category, affiliation, title, bio, direct_message_fee, is_available,
+      `SELECT id, display_name, business_name, provider_type, category, affiliation, title, bio,
+              direct_message_fee, is_available,
               CASE WHEN location_consent_at IS NOT NULL THEN location_area END AS location_area
        FROM professionals
-       WHERE id = $1 AND is_active AND verification_status = 'VERIFIED'`,
+       WHERE id = $1 AND is_active AND (verification_status = 'VERIFIED' OR provider_type = 'SERVICE')`,
       [req.params.id],
     );
     if (!rows[0]) return reply.code(404).send({ error: 'professional not found' });
@@ -320,8 +321,8 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
       return reply.code(401).send({ error: 'unauthorized' });
     }
     const { rows } = await deps.pool.query(
-      `SELECT id, display_name, whatsapp_e164, category, affiliation, verification_status,
-              is_active, is_available, created_at
+      `SELECT id, display_name, business_name, provider_type, whatsapp_e164, category, affiliation,
+              verification_status, is_active, is_available, created_at
        FROM professionals ORDER BY created_at DESC`,
     );
     return { professionals: rows };

@@ -123,6 +123,8 @@ describe('hard gate at quote time', () => {
       {
         id: professionalId,
         display_name: 'Dr John Kamau',
+        business_name: null,
+        provider_type: 'PROFESSIONAL',
         category: 'LECTURER',
         affiliation: null,
         title: null,

@@ -9,6 +9,7 @@ import {
   getProForPortal,
   proLoginStart,
   proLoginVerify,
+  proRegister,
   putProAvailability,
   putProPrivacy,
   putProSettings,
@@ -46,6 +47,30 @@ export async function proLoginStartAction(_prev: LoginState, formData: FormData)
     return { error: null, challengeId, ...(devCode ? { devCode } : {}) };
   } catch (err) {
     return { error: err instanceof ApiError ? err.message : 'Sign-in failed. Try again.' };
+  }
+}
+
+// Light registration for service businesses (salons, garages, field
+// providers): name + business + WhatsApp, then the same OTP verify step as
+// login. No registry verification — they are bookable right away.
+export async function proRegisterAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
+  const displayName = String(formData.get('displayName') ?? '').trim();
+  const businessName = String(formData.get('businessName') ?? '').trim();
+  const whatsapp = String(formData.get('whatsapp') ?? '').trim();
+  const flatPrice = String(formData.get('flatPrice') ?? '').trim();
+  if (!displayName || !businessName || !whatsapp) {
+    return { error: 'Your name, the business name and a WhatsApp number are required.' };
+  }
+  try {
+    const { challengeId, devCode } = await proRegister({
+      displayName,
+      businessName,
+      whatsapp,
+      ...(flatPrice ? { flatPrice } : {}),
+    });
+    return { error: null, challengeId, ...(devCode ? { devCode } : {}) };
+  } catch (err) {
+    return { error: err instanceof ApiError ? err.message : 'Registration failed. Try again.' };
   }
 }
 
@@ -284,6 +309,45 @@ export async function saveAvailabilityAction(_prev: ActionState, formData: FormD
 
   try {
     await putProAvailability(professional.id, true, slots);
+  } catch (err) {
+    return { error: err instanceof ApiError ? err.message : 'Saving failed. Try again.' };
+  }
+  return { error: null, saved: true };
+}
+
+// SERVICE providers manage fluid multi-capacity windows (several per day,
+// each with its own capacity); the editor submits them as one JSON field.
+export async function saveServiceAvailabilityAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const professionalId = await currentProfessionalId();
+  if (!professionalId) redirect('/pro');
+
+  if (formData.get('consent') !== 'on') {
+    return { error: 'You must consent to sharing your open hours before saving.' };
+  }
+
+  let windows: { weekday: number; start: string; end: string; capacity: number }[];
+  try {
+    windows = JSON.parse(String(formData.get('windows') ?? '[]'));
+  } catch {
+    return { error: 'Could not read the windows. Reload and try again.' };
+  }
+
+  const slots: AvailabilitySlot[] = [];
+  for (const w of windows) {
+    const [sh, sm] = w.start.split(':').map(Number);
+    const [eh, em] = w.end.split(':').map(Number);
+    if ([sh, sm, eh, em].some((n) => !Number.isInteger(n))) {
+      return { error: 'Each window needs a start and end time.' };
+    }
+    const capacity = Number(w.capacity);
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      return { error: 'Each window needs a capacity of at least 1 client.' };
+    }
+    slots.push({ weekday: w.weekday, startMinute: sh! * 60 + sm!, endMinute: eh! * 60 + em!, capacity });
+  }
+
+  try {
+    await putProAvailability(professionalId, true, slots);
   } catch (err) {
     return { error: err instanceof ApiError ? err.message : 'Saving failed. Try again.' };
   }

@@ -41,9 +41,10 @@ export default async function ProfessionalPage({
             </span>
             {professional.title && <span>{professional.title}</span>}
           </p>
+          {professional.business_name && <p className="pro-affiliation">{professional.business_name}</p>}
           {professional.affiliation && <p className="pro-affiliation">{professional.affiliation}</p>}
           {professional.bio && <p className="pro-bio">{professional.bio}</p>}
-          <p className="verified">✓ Verified professional</p>
+          {professional.provider_type !== 'SERVICE' && <p className="verified">✓ Verified professional</p>}
         </div>
       </div>
 

@@ -39,7 +39,7 @@ const OPEN_STATES: RequestState[] = ['HELD'];
 
 export async function handleWaInbound(deps: AppDeps, msg: InboundMessage): Promise<InboundOutcome> {
   const { rows: profRows } = await deps.pool.query(
-    `SELECT id, whatsapp_e164, preferred_channel, fee_percent, calcom_user_id
+    `SELECT id, whatsapp_e164, preferred_channel, fee_percent, calcom_user_id, provider_type
      FROM professionals WHERE whatsapp_e164 = $1`,
     [msg.fromE164],
   );
@@ -147,6 +147,13 @@ export async function handleWaInbound(deps: AppDeps, msg: InboundMessage): Promi
       return 'DECLINED';
     }
     case 'DECLINE_WRONG_TIME': {
+      // Counter-offers are a professional-only flow (they reprice by tier
+      // and rebook via Cal.com); SERVICE providers just decline.
+      if (professional.provider_type === 'SERVICE') {
+        await transition(deps.pool, request.id, 'DECLINED', 'PROFESSIONAL', 'DECLINE_WRONG_TIME', {}, { now: deps.now() });
+        await markIntent(deps, inboundId, 'DECLINE', request.id);
+        return 'DECLINED';
+      }
       // One counter round per request, enforced by the UNIQUE constraint.
       const { rows } = await deps.pool.query(`SELECT 1 FROM counter_offers WHERE request_id = $1`, [request.id]);
       if (rows.length > 0) {

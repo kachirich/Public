@@ -20,12 +20,23 @@ export async function startProLogin(
 ): Promise<{ challengeId: string; devCode?: string }> {
   const { rows } = await deps.pool.query(
     `SELECT id, whatsapp_e164, preferred_channel FROM professionals
-     WHERE whatsapp_e164 = $1 AND is_active AND verification_status = 'VERIFIED'`,
+     WHERE whatsapp_e164 = $1 AND is_active
+       AND (provider_type = 'SERVICE' OR verification_status = 'VERIFIED')`,
     [whatsapp],
   );
   const pro = rows[0];
-  if (!pro) throw new QuoteError(404, 'no verified professional with that WhatsApp number');
+  if (!pro) throw new QuoteError(404, 'no active provider with that WhatsApp number');
 
+  return issueOtpChallenge(deps, pro, dev);
+}
+
+// Shared by login and service-provider registration: create the OTP
+// challenge and queue the code to the provider's WhatsApp.
+export async function issueOtpChallenge(
+  deps: AppDeps,
+  pro: { id: string; whatsapp_e164: string; preferred_channel: string },
+  dev: boolean,
+): Promise<{ challengeId: string; devCode?: string }> {
   const code = String(randomInt(100000, 1000000));
   const now = deps.now();
   const { rows: challenge } = await deps.pool.query(
@@ -40,6 +51,38 @@ export async function startProLogin(
   );
 
   return { challengeId: challenge[0].id, ...(dev ? { devCode: code } : {}) };
+}
+
+export interface RegisterServiceInput {
+  displayName: string;
+  businessName: string;
+  whatsapp: string;
+  flatPrice?: string;
+}
+
+// Light registration for SERVICE providers: name + business + WhatsApp is
+// enough — no registry verification. The OTP challenge issued here doubles
+// as proof of number ownership before the first portal session; the row is
+// bookable immediately (verification_status is never consulted for SERVICE).
+export async function registerServiceProvider(
+  deps: AppDeps,
+  input: RegisterServiceInput,
+  dev: boolean,
+): Promise<{ providerId: string; challengeId: string; devCode?: string }> {
+  const { rows } = await deps.pool.query(
+    `INSERT INTO professionals (display_name, business_name, whatsapp_e164, provider_type, category,
+                                payout_method, service_flat_price, calcom_user_id, calcom_event_type)
+     VALUES ($1, $2, $3, 'SERVICE', 'SERVICE',
+             jsonb_build_object('type', 'MPESA', 'msisdn', $3::text), $4, NULL, NULL)
+     ON CONFLICT (whatsapp_e164) DO NOTHING
+     RETURNING id, whatsapp_e164, preferred_channel`,
+    [input.displayName, input.businessName, input.whatsapp, input.flatPrice ?? null],
+  );
+  const pro = rows[0];
+  if (!pro) throw new QuoteError(409, 'that WhatsApp number is already registered — sign in instead');
+
+  const challenge = await issueOtpChallenge(deps, pro, dev);
+  return { providerId: pro.id, ...challenge };
 }
 
 // Step 2: burn the challenge, return the professional for the session.

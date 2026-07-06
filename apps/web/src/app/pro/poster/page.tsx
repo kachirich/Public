@@ -28,19 +28,28 @@ export default async function PosterPage() {
 
       <div className="poster">
         <p className="poster-kicker">Professional Access</p>
-        <h1 className="poster-name">{professional.display_name}</h1>
+        <h1 className="poster-name">
+          {professional.provider_type === 'SERVICE'
+            ? (professional.business_name ?? professional.display_name)
+            : professional.display_name}
+        </h1>
         <p className="poster-meta">
           <span className="chip" data-category={professional.category}>
             {categoryLabel(professional.category)}
           </span>
           {professional.title && <span> {professional.title}</span>}
         </p>
+        {professional.provider_type === 'SERVICE' && professional.business_name && (
+          <p className="poster-affiliation">{professional.display_name}</p>
+        )}
         {professional.affiliation && <p className="poster-affiliation">{professional.affiliation}</p>}
 
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="poster-qr" src={`/api/professionals/${professionalId}/qr?format=svg`} alt="Booking QR code" />
 
-        <p className="poster-cta">Scan to book a session</p>
+        <p className="poster-cta">
+          {professional.provider_type === 'SERVICE' ? 'Scan to book ahead' : 'Scan to book a session'}
+        </p>
         <p className="poster-foot">Pay securely · funds held in escrow until your session happens</p>
       </div>
     </>

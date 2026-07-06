@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { AvailabilityEditor } from '@/components/availability-editor';
+import { ServiceAvailabilityEditor } from '@/components/service-availability-editor';
 import { MessageSettings } from '@/components/message-settings';
 import { getProAvailability, getProSettings, listProSessions } from '@/lib/api';
 import { categoryLabel, formatMoney, formatWhen, initials } from '@/lib/display';
@@ -29,9 +30,10 @@ export default async function ProDashboardPage() {
             <span className="chip" data-category={professional.category}>
               {categoryLabel(professional.category)}
             </span>
+            {professional.business_name && <span>{professional.business_name}</span>}
             {professional.affiliation && <span>{professional.affiliation}</span>}
           </p>
-          <p className="verified">✓ Verified professional</p>
+          {professional.provider_type !== 'SERVICE' && <p className="verified">✓ Verified professional</p>}
           <p className="pro-header-meta">
             <span className="status-dot" data-available={professional.is_available}>
               {professional.is_available ? 'Available — clients can book you' : 'Not available — bookings paused'}
@@ -69,14 +71,25 @@ export default async function ProDashboardPage() {
         </div>
       </div>
 
-      <div className="card">
-        <h2>Your weekly availability</h2>
-        <p className="pro-affiliation">
-          Sessions requested inside these hours are quoted at the standard rate; anything outside is
-          a premium off-duty request that you can still accept, decline, or counter on WhatsApp.
-        </p>
-        <AvailabilityEditor initialSlots={availability.slots} consentedAt={availability.consentedAt} />
-      </div>
+      {professional.provider_type === 'SERVICE' ? (
+        <div className="card">
+          <h2>Your open hours &amp; capacity</h2>
+          <p className="pro-affiliation">
+            Clients can only book inside these windows. Capacity is how many clients you can take at
+            the same time in a window — bookings keep landing until it is full.
+          </p>
+          <ServiceAvailabilityEditor initialSlots={availability.slots} consentedAt={availability.consentedAt} />
+        </div>
+      ) : (
+        <div className="card">
+          <h2>Your weekly availability</h2>
+          <p className="pro-affiliation">
+            Sessions requested inside these hours are quoted at the standard rate; anything outside is
+            a premium off-duty request that you can still accept, decline, or counter on WhatsApp.
+          </p>
+          <AvailabilityEditor initialSlots={availability.slots} consentedAt={availability.consentedAt} />
+        </div>
+      )}
 
       <div className="card">
         <h2>Location privacy</h2>

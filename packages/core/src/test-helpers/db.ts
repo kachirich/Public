@@ -13,6 +13,8 @@ const EXTRA_MIGRATIONS = [
   '0006-availability-flag.sql',
   '0007-otp-login-and-location-consent.sql',
   '0008-booking-source.sql',
+  '0009-professional-claim.sql',
+  '0009-service-providers.sql',
 ];
 
 export function testPool(): pg.Pool {
@@ -33,6 +35,22 @@ export async function ensureSchema(pool: pg.Pool): Promise<void> {
     for (const file of EXTRA_MIGRATIONS) {
       await pool.query(readFileSync(fileURLToPath(new URL(file, MIGRATIONS_SQL_DIR)), 'utf8'));
     }
+    return;
+  }
+  // Databases migrated before 0009 (e.g. via an older `pnpm migrate:up`)
+  // pick up the migrations here.
+  const { rows: claim } = await pool.query(
+    `SELECT 1 FROM information_schema.columns WHERE table_name = 'professionals' AND column_name = 'claim_status'`,
+  );
+  const { rows: pt } = await pool.query(
+    `SELECT 1 FROM information_schema.columns WHERE table_name = 'professionals' AND column_name = 'provider_type'`,
+  );
+  const { rows: avail } = await pool.query(`SELECT to_regclass('public.professional_availability') AS t`);
+  if (claim.length === 0 && avail[0].t) {
+    await pool.query(readFileSync(fileURLToPath(new URL('0009-professional-claim.sql', MIGRATIONS_SQL_DIR)), 'utf8'));
+  }
+  if (pt.length === 0 && avail[0].t) {
+    await pool.query(readFileSync(fileURLToPath(new URL('0009-service-providers.sql', MIGRATIONS_SQL_DIR)), 'utf8'));
   }
 }
 

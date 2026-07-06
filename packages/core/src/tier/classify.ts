@@ -1,3 +1,4 @@
+import type { RequestTier } from '../capacity/windows.js';
 import type { AvailabilitySlot, Tier } from '../ports/scheduling.js';
 
 export interface ClassifyInput {
@@ -34,13 +35,16 @@ export function classifyTier(input: ClassifyInput): Tier {
 }
 
 // Card acceptance deadline scales with how disruptive the request is.
-export const CARD_EXPIRY_MINUTES: Readonly<Record<Tier, number>> = {
+// STANDARD is the SERVICE-provider flat tier: in-window like IN_HOURS, but
+// with a shorter deadline so capacity is not held hostage for half a day.
+export const CARD_EXPIRY_MINUTES: Readonly<Record<RequestTier, number>> = {
   PREMIUM_INTERRUPT: 15,
   OFF_DUTY: 4 * 60,
   OFF_DAY: 12 * 60,
   IN_HOURS: 12 * 60,
+  STANDARD: 4 * 60,
 };
 
-export function cardExpiresAt(tier: Tier, now: Date): Date {
+export function cardExpiresAt(tier: RequestTier, now: Date): Date {
   return new Date(now.getTime() + CARD_EXPIRY_MINUTES[tier] * 60_000);
 }

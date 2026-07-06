@@ -18,6 +18,11 @@ export const PLATFORM_DEFAULT_PRICES: TierPrices = {
   PREMIUM_INTERRUPT: '8000.00',
 };
 
+// SERVICE providers self-register and set their own flat price
+// (professionals.service_flat_price); this default only covers rows where
+// they have not set one yet.
+export const PLATFORM_DEFAULT_SERVICE_PRICE = '1000.00';
+
 export function priceFor(config: PricingConfig, professionalId: string, tier: Tier): string {
   return config.overrides[professionalId]?.[tier] ?? config.defaults[tier];
 }

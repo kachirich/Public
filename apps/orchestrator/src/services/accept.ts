@@ -1,20 +1,39 @@
-import { IllegalTransitionError, transition, type ActorType } from '@marketplace/core';
+import { findCoveringWindow, IllegalTransitionError, transition, type ActorType } from '@marketplace/core';
 import type { AppDeps } from '../deps.js';
 import { computeBreakdown, toCents } from './pricing.js';
 import { QuoteError } from './quotes.js';
+import { countOverlapping, getServiceWindows, withProviderLock } from './service-availability.js';
 
 // Accept a HELD request: create the Cal.com booking first (force-book for
 // off-availability tiers), then transition. If the transition loses a race
 // (e.g. expiry fired first), compensate by cancelling the booking.
+//
+// SERVICE providers have no Cal.com booking; their mutual exclusion is the
+// window-capacity re-check, done atomically under the provider lock.
 export async function acceptRequest(deps: AppDeps, requestId: string, actor: ActorType): Promise<void> {
   const { rows } = await deps.pool.query(
-    `SELECT r.state, r.tier, r.session_start, r.duration_minutes, r.ref_code,
-            p.calcom_user_id, p.calcom_event_type
+    `SELECT r.state, r.tier, r.session_start, r.duration_minutes, r.ref_code, r.professional_id,
+            p.provider_type, p.calcom_user_id, p.calcom_event_type
      FROM requests r JOIN professionals p ON p.id = r.professional_id WHERE r.id = $1`,
     [requestId],
   );
   const row = rows[0];
   if (!row) throw new QuoteError(404, 'request not found');
+
+  if (row.provider_type === 'SERVICE') {
+    await withProviderLock(deps.pool, row.professional_id, async () => {
+      const windows = await getServiceWindows(deps.pool, row.professional_id);
+      const window = findCoveringWindow(windows, row.session_start, row.duration_minutes);
+      if (!window) throw new QuoteError(409, 'this time is no longer within the open hours');
+      // Exclude this request: it is HELD, which already counts.
+      const taken = await countOverlapping(
+        deps.pool, row.professional_id, row.session_start, row.duration_minutes, requestId,
+      );
+      if (taken >= window.capacity) throw new QuoteError(409, 'capacity is already full at that time');
+      await transition(deps.pool, requestId, 'ACCEPTED', actor, 'ACCEPT', {}, { now: deps.now() });
+    });
+    return;
+  }
 
   const { bookingId } = await deps.scheduling.createBooking({
     calcomUserId: row.calcom_user_id,

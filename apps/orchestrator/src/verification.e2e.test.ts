@@ -119,7 +119,18 @@ describe('hard gate at quote time', () => {
 
     await pool.query(`UPDATE professionals SET verification_status = 'VERIFIED' WHERE id = $1`, [professionalId]);
     const after = await app.inject({ method: 'GET', url: '/professionals' });
-    expect(after.json().professionals).toEqual([{ id: professionalId, display_name: 'Dr John Kamau' }]);
+    expect(after.json().professionals).toEqual([
+      {
+        id: professionalId,
+        display_name: 'Dr John Kamau',
+        category: 'LECTURER',
+        affiliation: null,
+        title: null,
+        bio: null,
+        is_available: true,
+        location_area: null,
+      },
+    ]);
 
     await pool.query(`UPDATE professionals SET is_active = false WHERE id = $1`, [professionalId]);
     const inactive = await app.inject({ method: 'GET', url: '/professionals' });

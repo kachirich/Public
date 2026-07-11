@@ -5,7 +5,15 @@ import type { RequestState } from '../state/transitions.js';
 
 const SCHEMA_PATH = fileURLToPath(new URL('../../../../schema.sql', import.meta.url));
 const MIGRATIONS_SQL_DIR = new URL('../../../db/migrations/sql/', import.meta.url);
-const EXTRA_MIGRATIONS = ['0002-professional-verification.sql'];
+const EXTRA_MIGRATIONS = [
+  '0002-professional-verification.sql',
+  '0003-professional-profile.sql',
+  '0004-location-and-availability.sql',
+  '0005-direct-messages.sql',
+  '0006-availability-flag.sql',
+  '0007-otp-login-and-location-consent.sql',
+  '0008-booking-source.sql',
+];
 
 export function testPool(): pg.Pool {
   const url = process.env.DATABASE_URL;
@@ -33,7 +41,8 @@ export async function truncateAll(pool: pg.Pool): Promise<void> {
     TRUNCATE scheduled_jobs, consult_rooms, webhook_events, inbound_messages,
              outbox_messages, ledger_entries, counter_offer_slots, counter_offers,
              request_transitions, requests, clients,
-             professional_verifications, professionals
+             professional_verifications, login_otps, direct_messages,
+             professional_availability, professionals
     RESTART IDENTITY CASCADE
   `);
 }

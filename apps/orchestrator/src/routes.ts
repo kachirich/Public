@@ -2,6 +2,7 @@ import { SlotTakenError } from '@marketplace/core';
 import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from './deps.js';
 import { chooseCounterSlot } from './services/accept.js';
+import { confirmDirectMessage, createDirectMessage, findDirectMessageByProviderRef } from './services/direct-messages.js';
 import { confirmQuotePayment, createQuote, initQuotePayment, QuoteError } from './services/quotes.js';
 import {
   confirmVerificationOtp,
@@ -17,6 +18,13 @@ interface QuoteBody {
   sessionStart: string;
   durationMinutes: number;
   brief: string;
+  source?: string;
+}
+
+// Attribution is a closed set: unknown values collapse to 'web' so a client
+// can't stuff arbitrary strings into the column.
+function normalizeSource(source: unknown): 'qr' | 'web' {
+  return source === 'qr' ? 'qr' : 'web';
 }
 
 export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
@@ -32,7 +40,13 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.post<{ Body: { displayName: string; email: string; phone?: string } }>('/clients', async (req, reply) => {
     const { displayName, email, phone } = req.body ?? {};
     if (!displayName || !email) return reply.code(400).send({ error: 'displayName and email are required' });
-    const { rows: existing } = await deps.pool.query(`SELECT id FROM clients WHERE email = $1`, [email]);
+    // Both email and phone are unique; match on either so a returning client
+    // with a new email but the same WhatsApp number (or vice versa) reuses
+    // their row instead of tripping the unique constraint.
+    const { rows: existing } = await deps.pool.query(
+      `SELECT id FROM clients WHERE email = $1 OR ($2::text IS NOT NULL AND phone_e164 = $2) LIMIT 1`,
+      [email, phone ?? null],
+    );
     if (existing[0]) return { clientId: existing[0].id };
     const { rows } = await deps.pool.query(
       `INSERT INTO clients (display_name, email, phone_e164) VALUES ($1, $2, $3) RETURNING id`,
@@ -48,7 +62,14 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     }
     const start = new Date(sessionStart);
     if (Number.isNaN(start.getTime())) return reply.code(400).send({ error: 'sessionStart must be an ISO datetime' });
-    const quote = await createQuote(deps, { clientId, professionalId, sessionStart: start, durationMinutes, brief });
+    const quote = await createQuote(deps, {
+      clientId,
+      professionalId,
+      sessionStart: start,
+      durationMinutes,
+      brief,
+      source: normalizeSource(req.body?.source),
+    });
     return reply.code(201).send(quote);
   });
 
@@ -84,6 +105,61 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     return { received: true };
   });
 
+  // Daraja STK callback. Unsigned by design, so the URL carries a secret
+  // token; a wrong token is a 401 before any parsing. CheckoutRequestID is
+  // the only correlation id Daraja echoes back — we stored it as the
+  // providerRef on the PENDING_PAYMENT transition (bookings) or on the
+  // direct_messages row (paid messages).
+  app.post<{ Params: { token: string } }>('/webhooks/mpesa/:token', async (req, reply) => {
+    if (!deps.mpesaCallbackToken || req.params.token !== deps.mpesaCallbackToken) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const cb = (req.body as { Body?: { stkCallback?: { CheckoutRequestID?: string; ResultCode?: number } } })?.Body
+      ?.stkCallback;
+    if (!cb?.CheckoutRequestID) return reply.code(400).send({ error: 'malformed event' });
+
+    const { rows } = await deps.pool.query(
+      `INSERT INTO webhook_events (source, external_id, payload)
+       VALUES ('mpesa', $1, $2) ON CONFLICT (source, external_id) DO NOTHING RETURNING id`,
+      [cb.CheckoutRequestID, JSON.stringify(req.body)],
+    );
+    if (rows.length === 0) return { received: true, duplicate: true };
+
+    if (cb.ResultCode === 0) {
+      const dmId = await findDirectMessageByProviderRef(deps, cb.CheckoutRequestID);
+      if (dmId) {
+        await confirmDirectMessage(deps, dmId);
+      } else {
+        const { rows: tr } = await deps.pool.query(
+          `SELECT request_id FROM request_transitions
+           WHERE to_state = 'PENDING_PAYMENT' AND metadata->>'providerRef' = $1
+           ORDER BY id DESC LIMIT 1`,
+          [cb.CheckoutRequestID],
+        );
+        if (tr[0]) await confirmQuotePayment(deps, tr[0].request_id, cb.CheckoutRequestID);
+      }
+    }
+    await deps.pool.query(`UPDATE webhook_events SET processed_at = now() WHERE id = $1`, [rows[0].id]);
+    return { received: true };
+  });
+
+  // Paid direct message: created unpaid, forwarded to the professional's
+  // WhatsApp only after the fee clears. This is the spam gate.
+  app.post<{ Params: { id: string }; Body: { clientId: string; body: string; source?: string } }>(
+    '/professionals/:id/messages',
+    async (req, reply) => {
+      const { clientId, body } = req.body ?? {};
+      if (!clientId || !body) return reply.code(400).send({ error: 'clientId and body are required' });
+      const result = await createDirectMessage(deps, {
+        clientId,
+        professionalId: req.params.id,
+        body,
+        source: normalizeSource(req.body?.source),
+      });
+      return reply.code(201).send(result);
+    },
+  );
+
   app.post('/webhooks/calcom', async (req, reply) => {
     const event = req.body as { triggerEvent?: string; payload?: { uid?: string; bookingId?: number } };
     const externalId = event.payload?.uid ?? String(event.payload?.bookingId ?? '');
@@ -110,13 +186,51 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   // The addendum's listing rule is enforced here, not in the UI:
   // non-verified professionals never appear in client-facing responses.
-  app.get('/professionals', async () => {
+  // The public anchor is the institution, not a geographic area: a
+  // professional's location_area only appears if they consented in the
+  // portal (location_consent_at). Clients who need an address can find the
+  // institution themselves.
+  app.get<{ Querystring: { category?: string; institution?: string } }>('/professionals', async (req) => {
+    const category = req.query.category?.toUpperCase();
+    const institution = req.query.institution;
     const { rows } = await deps.pool.query(
-      `SELECT id, display_name FROM professionals
+      `SELECT id, display_name, category, affiliation, title, bio, is_available,
+              CASE WHEN location_consent_at IS NOT NULL THEN location_area END AS location_area
+       FROM professionals
        WHERE is_active AND verification_status = 'VERIFIED'
-       ORDER BY display_name`,
+         AND ($1::text IS NULL OR category = $1::professional_category)
+         AND ($2::text IS NULL OR affiliation ILIKE '%' || $2 || '%')
+       ORDER BY category, display_name`,
+      [category ?? null, institution ?? null],
     );
     return { professionals: rows };
+  });
+
+  // Distinct institutions with verified professionals, for the client filter.
+  // Scoped by category when given so the UI never offers a dead combo (e.g.
+  // "Doctors" + a university that has no doctors).
+  app.get<{ Querystring: { category?: string } }>('/professionals/institutions', async (req) => {
+    const category = req.query.category?.toUpperCase();
+    const { rows } = await deps.pool.query(
+      `SELECT DISTINCT affiliation FROM professionals
+       WHERE is_active AND verification_status = 'VERIFIED' AND affiliation IS NOT NULL
+         AND ($1::text IS NULL OR category = $1::professional_category)
+       ORDER BY affiliation`,
+      [category ?? null],
+    );
+    return { institutions: rows.map((r) => r.affiliation) };
+  });
+
+  app.get<{ Params: { id: string } }>('/professionals/:id', async (req, reply) => {
+    const { rows } = await deps.pool.query(
+      `SELECT id, display_name, category, affiliation, title, bio, direct_message_fee, is_available,
+              CASE WHEN location_consent_at IS NOT NULL THEN location_area END AS location_area
+       FROM professionals
+       WHERE id = $1 AND is_active AND verification_status = 'VERIFIED'`,
+      [req.params.id],
+    );
+    if (!rows[0]) return reply.code(404).send({ error: 'professional not found' });
+    return rows[0];
   });
 
   app.get<{ Params: { id: string } }>('/requests/:id', async (req, reply) => {
@@ -124,7 +238,8 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
       `SELECT r.id, r.ref_code, r.state, r.tier, r.session_start, r.duration_minutes,
               r.currency, r.price_gross, r.platform_fee, r.payout_net,
               r.card_expires_at, r.version, r.created_at,
-              p.display_name AS professional_name
+              p.display_name AS professional_name, p.category AS professional_category,
+              p.affiliation AS professional_affiliation
        FROM requests r JOIN professionals p ON p.id = r.professional_id
        WHERE r.id = $1`,
       [req.params.id],
@@ -197,6 +312,32 @@ export function registerRoutes(app: FastifyInstance, deps: AppDeps): void {
     }
     return { pending: await pendingVerifications(deps) };
   });
+
+  // Admin roster view: every professional regardless of state, so the
+  // admin portal can activate/deactivate and watch verification progress.
+  app.get('/internal/professionals', async (req, reply) => {
+    if (req.headers['x-internal-secret'] !== deps.sharedSecret) {
+      return reply.code(401).send({ error: 'unauthorized' });
+    }
+    const { rows } = await deps.pool.query(
+      `SELECT id, display_name, whatsapp_e164, category, affiliation, verification_status,
+              is_active, is_available, created_at
+       FROM professionals ORDER BY created_at DESC`,
+    );
+    return { professionals: rows };
+  });
+
+  app.put<{ Params: { id: string }; Body: { active: boolean } }>(
+    '/internal/professionals/:id/active',
+    async (req, reply) => {
+      if (req.headers['x-internal-secret'] !== deps.sharedSecret) {
+        return reply.code(401).send({ error: 'unauthorized' });
+      }
+      if (typeof req.body?.active !== 'boolean') return reply.code(400).send({ error: 'active must be a boolean' });
+      await deps.pool.query(`UPDATE professionals SET is_active = $2 WHERE id = $1`, [req.params.id, req.body.active]);
+      return { saved: true, active: req.body.active };
+    },
+  );
 
   app.post<{ Params: { id: string }; Body: { decision: 'approve' | 'reject'; reviewedBy: string } }>(
     '/internal/verifications/:id/decide',

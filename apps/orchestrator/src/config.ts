@@ -15,9 +15,21 @@ const schema = z.object({
   CALCOM_API_KEY: z.string().optional(),
   PAYSTACK_SECRET_KEY: z.string().optional(),
   PAYSTACK_CALLBACK_URL: z.string().url().optional(),
+  // Safaricom Daraja (M-Pesa STK Push) — preferred provider when set.
+  MPESA_CONSUMER_KEY: z.string().optional(),
+  MPESA_CONSUMER_SECRET: z.string().optional(),
+  MPESA_SHORTCODE: z.string().optional(),
+  MPESA_PASSKEY: z.string().optional(),
+  MPESA_BASE_URL: z.string().url().default('https://sandbox.safaricom.co.ke'),
+  // Public URL Daraja calls back; must end with the same token the webhook
+  // route checks (callbacks are unsigned, the token is the auth).
+  MPESA_CALLBACK_URL: z.string().url().optional(),
+  MPESA_CALLBACK_TOKEN: z.string().min(16).optional(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
   WA_GATEWAY_URL: z.string().url().optional(),
+  // Where the client web app lives; dev payment stub redirects back here.
+  WEB_URL: z.string().url().default('http://localhost:3002'),
 });
 
 export type OrchestratorConfig = z.infer<typeof schema>;

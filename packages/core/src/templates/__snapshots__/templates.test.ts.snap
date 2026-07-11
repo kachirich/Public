@@ -38,6 +38,14 @@ exports[`templates > COUNTER_SENT_CLIENT snapshot 1`] = `"The professional can't
 
 exports[`templates > DECLINED_CLIENT snapshot 1`] = `"Unfortunately the professional can't take session R4X2. Your full payment is being refunded — it usually lands within 2 business days."`;
 
+exports[`templates > DIRECT_MESSAGE snapshot 1`] = `
+"📩 Paid message from Wanjiku (KES 50.00 paid):
+
+"Do you supervise MSc theses in machine learning?"
+
+I reply between 5-7pm on weekdays."
+`;
+
 exports[`templates > EXPIRED_CLIENT snapshot 1`] = `"The professional didn't respond to request R4X2 in time. Your full payment is being refunded — it usually lands within 2 business days."`;
 
 exports[`templates > NO_SHOW_CLIENT_REFUND snapshot 1`] = `"The professional didn't show up for session R4X2. We're sorry — your full payment of KES 1000.00 is being refunded."`;

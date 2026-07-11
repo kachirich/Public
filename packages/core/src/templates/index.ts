@@ -305,6 +305,22 @@ export function VERIFICATION_IN_REVIEW(): string {
   return `We're confirming your registration with the registry — this usually takes about 1 business day. We'll message you here as soon as it's done.`;
 }
 
+// ---------- paid direct messages (spam gate) ----------
+
+export interface DirectMessagePayload {
+  clientName: string;
+  body: string;
+  feeLine: string; // e.g. "KES 50.00 paid"
+  /** Professional's own note appended to forwarded messages, set in the portal. */
+  note?: string;
+}
+
+export function DIRECT_MESSAGE(p: DirectMessagePayload): string {
+  const lines = [`📩 Paid message from ${p.clientName} (${p.feeLine}):`, '', `"${p.body}"`];
+  if (p.note) lines.push('', p.note);
+  return lines.join('\n');
+}
+
 // ---------- registry ----------
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -332,6 +348,7 @@ export const TEMPLATES: Record<string, (payload: any) => string> = {
   VERIFICATION_APPROVED,
   VERIFICATION_REJECTED,
   VERIFICATION_IN_REVIEW,
+  DIRECT_MESSAGE,
 };
 
 // TemplateRenderer for the outbox dispatcher.

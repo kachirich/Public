@@ -5,12 +5,13 @@ import { bookAction, type ActionState } from '@/lib/actions';
 
 const initial: ActionState = { error: null };
 
-export function BookingForm({ professionalId }: { professionalId: string }) {
+export function BookingForm({ professionalId, source }: { professionalId: string; source?: string }) {
   const [state, formAction, pending] = useActionState(bookAction, initial);
 
   return (
     <form action={formAction}>
       <input type="hidden" name="professionalId" value={professionalId} />
+      {source && <input type="hidden" name="source" value={source} />}
 
       <label htmlFor="displayName">Your name</label>
       <input id="displayName" name="displayName" required autoComplete="name" />

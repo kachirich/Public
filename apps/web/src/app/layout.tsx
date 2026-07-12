@@ -8,6 +8,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const authkitLoginUrl = process.env.AUTHKIT_LOGIN_URL || 'http://localhost:4000/login.html';
+
   return (
     <html lang="en">
       <body>
@@ -17,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <nav className="header-nav">
             <Link href="/pro">For professionals</Link>
+            <a href={authkitLoginUrl}>Sign in</a>
           </nav>
         </header>
         <main>{children}</main>

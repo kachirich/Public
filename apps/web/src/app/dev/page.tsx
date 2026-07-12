@@ -24,8 +24,8 @@ export default async function DevConsolePage() {
         <h2>Client side</h2>
         <ul className="plain">
           <li>
-            <Link className="row-link" href="/">
-              Marketplace home (categories + area filter)
+            <Link className="row-link" href="/browse">
+              Marketplace browse (categories + area filter)
             </Link>
           </li>
         </ul>

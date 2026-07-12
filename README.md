@@ -15,6 +15,7 @@ of truth for the data model (applied verbatim by the initial migration).
 | `apps/orchestrator` | All business logic: HTTP API, webhooks, BullMQ outbox dispatcher + timer poller |
 | `apps/wa-gateway` | Thin OpenWA wrapper: outbound sends, group rooms, inbound webhook forwarding. No business logic |
 | `apps/web` | Next.js client UI (port 3002): browse professionals, book, pay, track requests, pick counter-offer slots. Talks to the orchestrator server-side only |
+| `apps/authkit-service` | Standalone auth microservice (port 4000): registration, login, JWT sessions, password reset, with a bundled login UI. Own Postgres schema, deploys independently — see `apps/authkit-service/README.md` |
 | `packages/core` | Ports, the state machine (`transition()` is the only writer to `requests.state`), templates, reply parser, tier classification, in-memory fakes |
 | `packages/adapters` | Cal.com, Paystack, Resend, wa-gateway clients — apps import these, core never does |
 | `packages/db` | node-pg-migrate migrations (initial = schema.sql verbatim) |
@@ -44,6 +45,11 @@ PORT=3001 pnpm --filter @marketplace/wa-gateway run dev
 
 # terminal 3 — web UI on http://localhost:3002
 ORCHESTRATOR_URL=http://localhost:3000 pnpm --filter @marketplace/web run dev
+
+# terminal 4 — auth microservice on http://localhost:4000 (optional; see
+# apps/authkit-service/.env.example for the rest of its config)
+cd apps/authkit-service && cp .env.example .env && cd ../..
+pnpm --filter @marketplace/authkit-service run dev
 ```
 
 Without provider env vars (Paystack, Cal.com, Resend, OpenWA) the

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create account — Professional Access AuthKit</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><span class="brand-dot"></span> Professional Access AuthKit</div>
+    <h1>Create your account</h1>
+    <p class="subtitle">Takes less than a minute.</p>
+
+    <div id="message" class="message" role="alert"></div>
+
+    <form id="register-form" novalidate>
+      <div>
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" autocomplete="name" />
+      </div>
+      <div>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required />
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" required />
+        <p class="hint">At least 8 characters, with a number and a special character.</p>
+      </div>
+      <div>
+        <label for="confirm-password">Confirm password</label>
+        <input id="confirm-password" name="confirm-password" type="password" autocomplete="new-password" required />
+      </div>
+      <button id="submit-btn" type="submit">Create account</button>
+    </form>
+
+    <div class="links">
+      <span></span>
+      <a href="/login.html">Already have an account?</a>
+    </div>
+  </div>
+
+  <script type="module" src="/register.js"></script>
+</body>
+</html>

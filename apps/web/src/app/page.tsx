@@ -1,114 +1,106 @@
 import Link from 'next/link';
-import { listInstitutions, listProfessionals, type Professional } from '@/lib/api';
-import { CATEGORY_COPY, categoryLabel, initials } from '@/lib/display';
+import { listProfessionals } from '@/lib/api';
+import { CATEGORY_COPY, categoryLabel } from '@/lib/display';
 
 export const dynamic = 'force-dynamic';
 
-function ProfessionalCard({ p }: { p: Professional }) {
-  return (
-    <Link className="pro-card" href={`/professionals/${p.id}`}>
-      <span className="avatar" data-category={p.category} aria-hidden>
-        {initials(p.display_name)}
-      </span>
-      <span className="pro-card-body">
-        <span className="pro-card-top">
-          <strong>{p.display_name}</strong>
-          <span className="chip" data-category={p.category}>
-            {categoryLabel(p.category)}
-          </span>
-          <span className="status-dot" data-available={p.is_available}>
-            {p.is_available ? 'Available' : 'Not available'}
-          </span>
-        </span>
-        {p.title && <span className="pro-title">{p.title}</span>}
-        {p.affiliation && <span className="pro-affiliation">{p.affiliation}</span>}
-        {p.location_area && <span className="pro-location">📍 {p.location_area}</span>}
-        {p.bio && <span className="pro-bio">{p.bio}</span>}
-        <span className="verified">✓ Verified professional</span>
-      </span>
-    </Link>
-  );
-}
+const HOW_IT_WORKS = [
+  {
+    step: '1',
+    title: 'Browse & pick a time',
+    body: 'Filter by category or institution, then pick a slot — inside a professional’s normal hours or an off-duty premium request.',
+  },
+  {
+    step: '2',
+    title: 'Pay into escrow',
+    body: 'Your payment is held, not released, until the session actually happens. Nobody gets paid for a no-show.',
+  },
+  {
+    step: '3',
+    title: 'Meet, then payout',
+    body: 'The professional confirms on WhatsApp — no app to install. Once the session completes, escrow releases their payout automatically.',
+  },
+];
 
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string; institution?: string }>;
-}) {
-  const { category, institution } = await searchParams;
-  const active = category?.toUpperCase();
-  const [{ professionals }, { institutions }] = await Promise.all([
-    listProfessionals({ ...(active ? { category: active } : {}), ...(institution ? { institution } : {}) }),
-    listInstitutions(active),
-  ]);
+export default async function LandingPage() {
+  const { professionals } = await listProfessionals();
+  const institutions = new Set(professionals.map((p) => p.affiliation).filter(Boolean));
+  const authkitLoginUrl = process.env.AUTHKIT_LOGIN_URL || 'http://localhost:4000/login.html';
 
-  const withParams = (next: { category?: string; institution?: string }) => {
-    const params = new URLSearchParams();
-    const cat = 'category' in next ? next.category : category;
-    // Institutions are category-scoped, so switching category always clears a
-    // previously-picked institution — it may not exist in the new category.
-    const inst = 'category' in next ? next.institution : 'institution' in next ? next.institution : institution;
-    if (cat) params.set('category', cat);
-    if (inst) params.set('institution', inst);
-    const qs = params.toString();
-    return qs ? `/?${qs}` : '/';
-  };
+  const categoryCounts = Object.keys(CATEGORY_COPY).map((category) => ({
+    category,
+    count: professionals.filter((p) => p.category === category && p.is_available).length,
+  }));
 
   return (
     <>
       <section className="hero">
-        <h1>Book time with verified professionals</h1>
+        <h1>Professional access, on your schedule</h1>
         <p>
-          Doctors, lecturers, lawyers and more — even outside their normal availability. Your payment
-          stays in escrow until the session happens.
+          Book paid time with verified doctors, lecturers, lawyers and more — even outside their
+          normal availability. No app for them to install; they run everything from WhatsApp.
+          Your payment stays in escrow until the session happens.
         </p>
+        <div className="calendar-links">
+          <Link className="button-link" href="/browse">
+            Browse professionals
+          </Link>
+          <Link className="button-link button-secondary" href="/pro">
+            For professionals
+          </Link>
+          <a className="button-link button-secondary" href={authkitLoginUrl}>
+            Sign in
+          </a>
+        </div>
+        {professionals.length > 0 && (
+          <p className="pro-affiliation">
+            {professionals.length} verified professionals{institutions.size > 0 ? ` across ${institutions.size} institutions` : ''} already on the platform.
+          </p>
+        )}
       </section>
 
-      <nav className="category-filter" aria-label="Filter by category">
-        <Link className="chip chip-filter" data-active={!active} href={withParams({ category: undefined })}>
-          All
-        </Link>
-        {Object.entries(CATEGORY_COPY).map(([c, copy]) => (
-          <Link
-            key={c}
-            className="chip chip-filter"
-            data-active={active === c}
-            data-category={c}
-            href={withParams({ category: c.toLowerCase() })}
-          >
-            {copy.plural}
-          </Link>
-        ))}
-      </nav>
-
-      <nav className="area-filter" aria-label="Filter by institution">
-        <span className="area-filter-label">🏛️ Institution:</span>
-        <Link className="chip chip-filter" data-active={!institution} href={withParams({ institution: undefined })}>
-          All institutions
-        </Link>
-        {institutions.map((inst) => (
-          <Link
-            key={inst}
-            className="chip chip-filter"
-            data-active={institution === inst}
-            href={withParams({ institution: inst })}
-          >
-            {inst}
-          </Link>
-        ))}
-      </nav>
-
-      {professionals.length === 0 ? (
-        <div className="card">
-          <p>No professionals match those filters yet. Try widening your search.</p>
-        </div>
-      ) : (
-        <div className="pro-grid">
-          {professionals.map((p) => (
-            <ProfessionalCard key={p.id} p={p} />
+      <div className="card">
+        <h2>How it works</h2>
+        <div className="landing-steps">
+          {HOW_IT_WORKS.map((s) => (
+            <div key={s.step} className="landing-step">
+              <span className="landing-step-number" aria-hidden>
+                {s.step}
+              </span>
+              <div>
+                <strong>{s.title}</strong>
+                <p className="pro-affiliation">{s.body}</p>
+              </div>
+            </div>
           ))}
         </div>
-      )}
+      </div>
+
+      <div className="card">
+        <h2>Browse by category</h2>
+        <div className="landing-category-grid">
+          {categoryCounts.map(({ category, count }) => (
+            <Link key={category} className="landing-category-card" data-category={category} href={`/browse?category=${category.toLowerCase()}`}>
+              <span className="chip" data-category={category}>
+                {categoryLabel(category)}
+              </span>
+              <span className="pro-affiliation">{count} available now</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>Verified, not just listed</h2>
+        <p className="pro-affiliation">
+          Every professional on the platform goes through registry verification against their
+          professional body before they can be booked — the same hard gate applies whether they
+          signed up themselves or were referred. Clients only ever see profiles that passed.
+        </p>
+        <Link className="button-link" href="/browse">
+          Start browsing
+        </Link>
+      </div>
     </>
   );
 }

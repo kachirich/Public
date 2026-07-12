@@ -26,24 +26,31 @@ export function verifySession(token) {
  * (XSS) access, Secure is forced in production (cookie never travels over
  * plain HTTP), SameSite=Lax blocks CSRF on cross-site POSTs while still
  * allowing top-level navigation (e.g. an email reset link).
+ *
+ * COOKIE_DOMAIN is deliberately opt-in via env rather than hardcoded: a
+ * leading-dot Domain attribute (e.g. ".flowgateway.dev") is what makes the
+ * cookie readable on every subdomain (book.flowgateway.dev included), but
+ * that same syntax is invalid for "localhost" — so it must stay unset in
+ * development and only be set in production.
  */
-export function setSessionCookie(res, token) {
-  res.cookie(COOKIE_NAME, token, {
+function cookieOptions(extra = {}) {
+  const domain = process.env.COOKIE_DOMAIN?.trim();
+  return {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
-  });
+    ...(domain ? { domain } : {}),
+    ...extra,
+  };
+}
+
+export function setSessionCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, cookieOptions({ maxAge: 7 * 24 * 60 * 60 * 1000 }));
 }
 
 export function clearSessionCookie(res) {
-  res.clearCookie(COOKIE_NAME, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-  });
+  res.clearCookie(COOKIE_NAME, cookieOptions());
 }
 
 export { COOKIE_NAME };

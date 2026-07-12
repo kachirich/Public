@@ -18,6 +18,27 @@ export interface Professional {
   direct_message_fee?: string;
 }
 
+// claim_status / authkit_user_id are portal-internal — deliberately kept
+// off the public Professional type/endpoint (anyone can fetch a
+// professional's public profile) and only returned from the /pro/*
+// endpoints below, which are only ever called server-side from the
+// AuthKit-gated portal.
+export type ClaimStatus = 'UNCLAIMED' | 'HOSPITAL_VERIFIED' | 'FULLY_ACTIVATED';
+export type VerificationStatus = 'PENDING_VERIFICATION' | 'VERIFIED' | 'NEEDS_MANUAL_REVIEW' | 'REJECTED';
+
+export interface PortalProfessional {
+  id: string;
+  display_name: string;
+  category: ProfessionalCategory;
+  affiliation: string | null;
+  title: string | null;
+  location_area: string | null;
+  is_available: boolean;
+  claimStatus: ClaimStatus;
+  authkitUserId: string | null;
+  verificationStatus: VerificationStatus;
+}
+
 export interface AvailabilitySlot {
   weekday: number;
   startMinute: number;
@@ -115,8 +136,38 @@ export function proLoginStart(whatsapp: string): Promise<{ challengeId: string; 
   return call('/pro/login', { method: 'POST', body: JSON.stringify({ whatsapp }) });
 }
 
-export function proLoginVerify(challengeId: string, code: string): Promise<{ professional: Professional }> {
+export function proLoginVerify(challengeId: string, code: string): Promise<{ professional: PortalProfessional }> {
   return call('/pro/login/verify', { method: 'POST', body: JSON.stringify({ challengeId, code }) });
+}
+
+export function getProForPortal(id: string): Promise<{ professional: PortalProfessional }> {
+  return call(`/pro/${id}`);
+}
+
+export function claimProfessional(
+  id: string,
+  authkitUserId: string,
+  authkitEmail: string,
+): Promise<{ professional: PortalProfessional }> {
+  return call(`/pro/${id}/claim`, { method: 'POST', body: JSON.stringify({ authkitUserId, authkitEmail }) });
+}
+
+export interface ApplyProfessionalInput {
+  displayName: string;
+  whatsapp: string;
+  email?: string;
+  category: ProfessionalCategory;
+  affiliation?: string;
+  title?: string;
+  bio?: string;
+  authkitUserId: string;
+  authkitEmail: string;
+}
+
+// Self-application: no pre-existing row to claim, so this creates one and
+// binds it to the caller's AuthKit account in the same request.
+export function applyAsProfessional(input: ApplyProfessionalInput): Promise<{ professional: PortalProfessional }> {
+  return call('/pro/apply', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function getProAvailability(id: string): Promise<{ consentedAt: string | null; slots: AvailabilitySlot[] }> {

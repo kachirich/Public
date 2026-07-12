@@ -1,19 +1,17 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { AvailabilityEditor } from '@/components/availability-editor';
 import { MessageSettings } from '@/components/message-settings';
-import { getProAvailability, getProfessional, getProSettings, listProSessions } from '@/lib/api';
+import { getProAvailability, getProSettings, listProSessions } from '@/lib/api';
 import { categoryLabel, formatMoney, formatWhen, initials } from '@/lib/display';
-import { currentProfessionalId, proLogoutAction, togglePrivacyAction, toggleStatusAction } from '@/lib/pro-actions';
+import { proLogoutAction, requireOwnedProfessional, togglePrivacyAction, toggleStatusAction } from '@/lib/pro-actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ProDashboardPage() {
-  const professionalId = await currentProfessionalId();
-  if (!professionalId) redirect('/pro');
+  const professional = await requireOwnedProfessional();
+  const professionalId = professional.id;
 
-  const [professional, availability, { sessions }, settings] = await Promise.all([
-    getProfessional(professionalId),
+  const [availability, { sessions }, settings] = await Promise.all([
     getProAvailability(professionalId),
     listProSessions(professionalId),
     getProSettings(professionalId),

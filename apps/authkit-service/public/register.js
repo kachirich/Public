@@ -1,4 +1,4 @@
-import { postJSON, showMessage, hideMessage, setLoading, isPasswordStrong } from './app.js';
+import { postJSON, showMessage, hideMessage, setLoading, isPasswordStrong, getReturnToParam } from './app.js';
 
 const form = document.getElementById('register-form');
 const message = document.getElementById('message');
@@ -24,8 +24,8 @@ form.addEventListener('submit', async (e) => {
 
   setLoading(submitBtn, true, 'Create account');
   try {
-    await postJSON('/api/auth/register', { email, password, name });
-    window.location.href = '/me.html';
+    const data = await postJSON('/api/auth/register', { email, password, name, returnTo: getReturnToParam() });
+    window.location.href = data.redirectTo || '/me.html';
   } catch (err) {
     showMessage(message, err.message);
   } finally {

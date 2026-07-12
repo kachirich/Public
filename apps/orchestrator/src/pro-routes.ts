@@ -9,6 +9,16 @@ import { startProLogin, verifyProLogin } from './services/pro-login.js';
 // existing OTP machinery in production; in development, knowing the number
 // of a verified professional signs you in. Every mutating route re-checks
 // the professional exists and is verified.
+//
+// claim_status is a second, orthogonal gate on top of verification_status:
+// a professional can be VERIFIED (publicly bookable) while still UNCLAIMED
+// or HOSPITAL_VERIFIED (nobody has linked an AuthKit account to the row
+// yet). Login/OTP-verify use findVerified — a professional must be
+// findable and OTP-able before they can claim their row. Every other
+// mutating/reading portal route uses findActivated, which additionally
+// requires claim_status = 'FULLY_ACTIVATED', so an unclaimed profile
+// cannot be read or mutated through the portal API no matter what the web
+// app does — this is enforced here, not just at the frontend gate.
 
 interface AvailabilitySlotBody {
   weekday: number; // 0 = Sunday
@@ -16,10 +26,28 @@ interface AvailabilitySlotBody {
   endMinute: number;
 }
 
+const PROFESSIONAL_CATEGORIES = new Set(['DOCTOR', 'LECTURER', 'LAWYER', 'ACCOUNTANT', 'ENGINEER', 'THERAPIST']);
+
+interface ApplyBody {
+  displayName: string;
+  whatsapp: string;
+  email?: string;
+  category: string;
+  affiliation?: string;
+  title?: string;
+  bio?: string;
+  authkitUserId: string;
+  authkitEmail: string;
+}
+
+const PORTAL_COLUMNS = `id, display_name, category, affiliation, title, location_area,
+            availability_consent_at, is_available,
+            claim_status AS "claimStatus", authkit_user_id AS "authkitUserId",
+            verification_status AS "verificationStatus"`;
+
 async function findVerified(deps: AppDeps, whereSql: string, param: string) {
   const { rows } = await deps.pool.query(
-    `SELECT id, display_name, category, affiliation, title, location_area,
-            availability_consent_at, is_available
+    `SELECT ${PORTAL_COLUMNS}
      FROM professionals
      WHERE ${whereSql} AND is_active AND verification_status = 'VERIFIED'`,
     [param],
@@ -27,9 +55,93 @@ async function findVerified(deps: AppDeps, whereSql: string, param: string) {
   return rows[0];
 }
 
+async function findActivated(deps: AppDeps, whereSql: string, param: string) {
+  const { rows } = await deps.pool.query(
+    `SELECT ${PORTAL_COLUMNS}
+     FROM professionals
+     WHERE ${whereSql} AND is_active AND verification_status = 'VERIFIED' AND claim_status = 'FULLY_ACTIVATED'`,
+    [param],
+  );
+  return rows[0];
+}
+
+// Unlike findVerified/findActivated, this doesn't gate on verification_status
+// at all — it backs the portal's own "what state is my row in" read (GET
+// /pro/:id), which self-applied professionals need to hit while still
+// PENDING_VERIFICATION so apps/web can show them a pending-review screen
+// instead of a 404. Ownership is checked one layer up in apps/web by
+// comparing the caller's AuthKit id against authkitUserId.
+async function findPortalRow(deps: AppDeps, whereSql: string, param: string) {
+  const { rows } = await deps.pool.query(
+    `SELECT ${PORTAL_COLUMNS}
+     FROM professionals
+     WHERE ${whereSql} AND is_active`,
+    [param],
+  );
+  return rows[0];
+}
+
 export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
+  // Self-application: someone with no existing professionals row at all
+  // registers directly, distinct from claiming a pre-existing one. The
+  // caller must already hold an AuthKit session (apps/web's middleware
+  // gates /pro/apply) and the new row is bound to that account immediately
+  // — claim_status is FULLY_ACTIVATED from creation, there's nothing to
+  // claim later. verification_status keeps its table default of
+  // PENDING_VERIFICATION, so the new professional is invisible on the
+  // public listing until an admin runs them through the usual
+  // registry+OTP verification pipeline. calcom_user_id/calcom_event_type
+  // are placeholders (0) — every existing row in this codebase has those
+  // provisioned out of band before going live, and nothing reads them
+  // until verification_status reaches VERIFIED (see services/quotes.ts).
+  app.post<{ Body: ApplyBody }>('/pro/apply', async (req, reply) => {
+    const { displayName, whatsapp, email, category, affiliation, title, bio, authkitUserId, authkitEmail } = req.body ?? ({} as ApplyBody);
+    if (!displayName?.trim() || !whatsapp?.trim() || !category || !authkitUserId || !authkitEmail) {
+      return reply.code(400).send({ error: 'displayName, whatsapp, category, authkitUserId, and authkitEmail are required' });
+    }
+    if (!PROFESSIONAL_CATEGORIES.has(category)) {
+      return reply.code(400).send({ error: 'invalid category' });
+    }
+
+    try {
+      const { rows } = await deps.pool.query(
+        `INSERT INTO professionals (
+           display_name, whatsapp_e164, email, category, affiliation, title, bio,
+           calcom_user_id, calcom_event_type, payout_method,
+           claim_status, authkit_user_id, claimed_at
+         ) VALUES ($1, $2, $3, $4::professional_category, $5, $6, $7, 0, 0, $8, 'FULLY_ACTIVATED', $9, now())
+         RETURNING id, claim_status AS "claimStatus", authkit_user_id AS "authkitUserId",
+                   verification_status AS "verificationStatus"`,
+        [
+          displayName.trim(),
+          whatsapp.trim(),
+          email?.trim() || null,
+          category,
+          affiliation?.trim() || null,
+          title?.trim() || null,
+          bio?.trim() || null,
+          JSON.stringify({ type: 'MPESA', msisdn: whatsapp.trim() }),
+          authkitUserId,
+        ],
+      );
+      return reply.code(201).send({ professional: rows[0] });
+    } catch (err) {
+      const pgErr = err as { code?: string; constraint?: string };
+      if (pgErr.code === '23505') {
+        if (pgErr.constraint === 'idx_professionals_authkit_user_id') {
+          return reply.code(409).send({ error: 'this account has already applied for or claimed a professional profile' });
+        }
+        return reply.code(409).send({ error: 'a professional is already registered with this WhatsApp number' });
+      }
+      throw err;
+    }
+  });
+
   // Two-step OTP login: the code lands on the professional's WhatsApp,
-  // proving control of the number before any session exists.
+  // proving control of the number before any session exists. Uses
+  // findVerified (not findActivated) — an unclaimed professional must
+  // still be able to log in and OTP-verify, since that's the prerequisite
+  // for claiming the row in the first place.
   app.post<{ Body: { whatsapp: string } }>('/pro/login', async (req, reply) => {
     const whatsapp = req.body?.whatsapp?.trim();
     if (!whatsapp) return reply.code(400).send({ error: 'whatsapp is required' });
@@ -45,8 +157,65 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
     return { professional: pro };
   });
 
+  // Portal view of a professional, including claim_status/authkit_user_id/
+  // verification_status — deliberately separate from the public GET
+  // /professionals/:id (routes.ts), which never exposes those fields. Used
+  // by the claim screen, the pending-verification screen, and the dashboard
+  // to figure out what to show and to verify the signed-in AuthKit account
+  // actually owns this profile. Uses findPortalRow, not findVerified —
+  // self-applied professionals need this to work while still
+  // PENDING_VERIFICATION, before verification even starts.
+  app.get<{ Params: { id: string } }>('/pro/:id', async (req, reply) => {
+    const pro = await findPortalRow(deps, 'id = $1', req.params.id);
+    if (!pro) return reply.code(404).send({ error: 'professional not found' });
+    return { professional: pro };
+  });
+
+  // Claim: links this professional row to an AuthKit account, transitioning
+  // UNCLAIMED/HOSPITAL_VERIFIED -> FULLY_ACTIVATED. Uses findVerified (not
+  // findActivated) since the whole point is to activate a not-yet-activated
+  // row. Idempotent for the same account; conflicts (row already claimed by
+  // someone else, or this account already claimed a different row) return
+  // 409 rather than silently overwriting.
+  app.post<{ Params: { id: string }; Body: { authkitUserId: string; authkitEmail: string } }>(
+    '/pro/:id/claim',
+    async (req, reply) => {
+      const { authkitUserId, authkitEmail } = req.body ?? {};
+      if (!authkitUserId || !authkitEmail) {
+        return reply.code(400).send({ error: 'authkitUserId and authkitEmail are required' });
+      }
+
+      const pro = await findVerified(deps, 'id = $1', req.params.id);
+      if (!pro) return reply.code(404).send({ error: 'professional not found' });
+
+      if (pro.claimStatus === 'FULLY_ACTIVATED') {
+        if (pro.authkitUserId === authkitUserId) return { professional: pro };
+        return reply.code(409).send({ error: 'this profile has already been claimed' });
+      }
+
+      try {
+        const { rows } = await deps.pool.query(
+          `UPDATE professionals
+           SET claim_status = 'FULLY_ACTIVATED', authkit_user_id = $2, claimed_at = now()
+           WHERE id = $1
+           RETURNING id, claim_status AS "claimStatus", authkit_user_id AS "authkitUserId",
+                     verification_status AS "verificationStatus"`,
+          [req.params.id, authkitUserId],
+        );
+        return { professional: rows[0] };
+      } catch (err) {
+        // unique_violation on idx_professionals_authkit_user_id: this
+        // AuthKit account already claimed a different profile.
+        if ((err as { code?: string }).code === '23505') {
+          return reply.code(409).send({ error: 'this account has already claimed a different profile' });
+        }
+        throw err;
+      }
+    },
+  );
+
   app.get<{ Params: { id: string } }>('/pro/:id/availability', async (req, reply) => {
-    const pro = await findVerified(deps, 'id = $1', req.params.id);
+    const pro = await findActivated(deps, 'id = $1', req.params.id);
     if (!pro) return reply.code(404).send({ error: 'professional not found' });
     const { rows } = await deps.pool.query(
       `SELECT weekday, start_minute AS "startMinute", end_minute AS "endMinute"
@@ -59,7 +228,7 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.put<{ Params: { id: string }; Body: { consent: boolean; slots: AvailabilitySlotBody[] } }>(
     '/pro/:id/availability',
     async (req, reply) => {
-      const pro = await findVerified(deps, 'id = $1', req.params.id);
+      const pro = await findActivated(deps, 'id = $1', req.params.id);
       if (!pro) return reply.code(404).send({ error: 'professional not found' });
       const { consent, slots } = req.body ?? {};
       if (!consent) return reply.code(422).send({ error: 'availability sharing requires consent' });
@@ -102,7 +271,7 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   // Available / not available: the professional's own pause switch.
   app.put<{ Params: { id: string }; Body: { available: boolean } }>('/pro/:id/status', async (req, reply) => {
-    const pro = await findVerified(deps, 'id = $1', req.params.id);
+    const pro = await findActivated(deps, 'id = $1', req.params.id);
     if (!pro) return reply.code(404).send({ error: 'professional not found' });
     if (typeof req.body?.available !== 'boolean') return reply.code(400).send({ error: 'available must be a boolean' });
     await deps.pool.query(`UPDATE professionals SET is_available = $2 WHERE id = $1`, [req.params.id, req.body.available]);
@@ -111,7 +280,7 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
 
   // Location privacy: area shows to clients only while consent stands.
   app.put<{ Params: { id: string }; Body: { showLocation: boolean } }>('/pro/:id/privacy', async (req, reply) => {
-    const pro = await findVerified(deps, 'id = $1', req.params.id);
+    const pro = await findActivated(deps, 'id = $1', req.params.id);
     if (!pro) return reply.code(404).send({ error: 'professional not found' });
     if (typeof req.body?.showLocation !== 'boolean') {
       return reply.code(400).send({ error: 'showLocation must be a boolean' });
@@ -126,7 +295,7 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
   // Message & spam settings: the fee that gates paid direct messages, and
   // the note appended to every forwarded message.
   app.get<{ Params: { id: string } }>('/pro/:id/settings', async (req, reply) => {
-    const pro = await findVerified(deps, 'id = $1', req.params.id);
+    const pro = await findActivated(deps, 'id = $1', req.params.id);
     if (!pro) return reply.code(404).send({ error: 'professional not found' });
     const { rows } = await deps.pool.query(
       `SELECT direct_message_fee AS "directMessageFee", dm_note AS "dmNote",
@@ -140,7 +309,7 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
   app.put<{ Params: { id: string }; Body: { directMessageFee: string; dmNote?: string } }>(
     '/pro/:id/settings',
     async (req, reply) => {
-      const pro = await findVerified(deps, 'id = $1', req.params.id);
+      const pro = await findActivated(deps, 'id = $1', req.params.id);
       if (!pro) return reply.code(404).send({ error: 'professional not found' });
       const fee = Number(req.body?.directMessageFee);
       if (!Number.isFinite(fee) || fee < 0 || fee > 100_000) {
@@ -157,7 +326,7 @@ export function registerProRoutes(app: FastifyInstance, deps: AppDeps): void {
   );
 
   app.get<{ Params: { id: string } }>('/pro/:id/sessions', async (req, reply) => {
-    const pro = await findVerified(deps, 'id = $1', req.params.id);
+    const pro = await findActivated(deps, 'id = $1', req.params.id);
     if (!pro) return reply.code(404).send({ error: 'professional not found' });
     const { rows } = await deps.pool.query(
       `SELECT r.id, r.ref_code, r.state, r.tier, r.session_start, r.duration_minutes,

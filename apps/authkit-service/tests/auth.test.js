@@ -77,6 +77,94 @@ describe('login', () => {
   });
 });
 
+describe('returnTo redirect', () => {
+  it('echoes back a safe returnTo on login', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password, returnTo: 'http://localhost:3002/pro' });
+    expect(res.status).toBe(200);
+    expect(res.body.redirectTo).toBe('http://localhost:3002/pro');
+  });
+
+  it('echoes back a safe returnTo on register', async () => {
+    const otherEmail = `authkit_test_returnto_${Date.now()}@example.test`;
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ email: otherEmail, password, returnTo: 'http://localhost:3002/admin' });
+    expect(res.status).toBe(201);
+    expect(res.body.redirectTo).toBe('http://localhost:3002/admin');
+  });
+
+  it('rejects an off-host returnTo (open-redirect protection)', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password, returnTo: 'https://evil.example.com/steal' });
+    expect(res.status).toBe(200);
+    expect(res.body.redirectTo).toBeNull();
+  });
+
+  it('rejects a malformed returnTo without erroring', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email, password, returnTo: 'not a url' });
+    expect(res.status).toBe(200);
+    expect(res.body.redirectTo).toBeNull();
+  });
+
+  it('omits returnTo entirely without erroring', async () => {
+    const res = await request(app).post('/api/auth/login').send({ email, password });
+    expect(res.status).toBe(200);
+    expect(res.body.redirectTo).toBeNull();
+  });
+
+  it('in production, accepts https://*.flowgateway.dev and rejects everything else', async () => {
+    process.env.NODE_ENV = 'production';
+    try {
+      const good = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, returnTo: 'https://book.flowgateway.dev/pro' });
+      expect(good.body.redirectTo).toBe('https://book.flowgateway.dev/pro');
+
+      const wrongHost = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, returnTo: 'https://flowgateway.dev.evil.com/pro' });
+      expect(wrongHost.body.redirectTo).toBeNull();
+
+      const wrongProtocol = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, returnTo: 'http://book.flowgateway.dev/pro' });
+      expect(wrongProtocol.body.redirectTo).toBeNull();
+
+      const localhostRejectedInProd = await request(app)
+        .post('/api/auth/login')
+        .send({ email, password, returnTo: 'http://localhost:3002/pro' });
+      expect(localhostRejectedInProd.body.redirectTo).toBeNull();
+    } finally {
+      process.env.NODE_ENV = 'test';
+    }
+  });
+});
+
+describe('session cookie', () => {
+  it('has no Domain attribute when COOKIE_DOMAIN is unset (dev/test default)', async () => {
+    const res = await request(app).post('/api/auth/login').send({ email, password });
+    const cookie = res.headers['set-cookie']?.[0];
+    expect(cookie).toMatch(/authkit_jwt=/);
+    expect(cookie.toLowerCase()).not.toContain('domain=');
+  });
+
+  it('sets Domain=.flowgateway.dev when COOKIE_DOMAIN is configured, so book.flowgateway.dev can read it', async () => {
+    process.env.COOKIE_DOMAIN = '.flowgateway.dev';
+    try {
+      const res = await request(app).post('/api/auth/login').send({ email, password });
+      const cookie = res.headers['set-cookie']?.[0];
+      expect(cookie.toLowerCase()).toContain('domain=.flowgateway.dev');
+    } finally {
+      delete process.env.COOKIE_DOMAIN;
+    }
+  });
+});
+
 describe('session protection', () => {
   it('rejects /me without a session', async () => {
     const res = await request(app).get('/api/auth/me');

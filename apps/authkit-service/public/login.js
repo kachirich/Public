@@ -1,4 +1,4 @@
-import { postJSON, showMessage, hideMessage, setLoading } from './app.js';
+import { postJSON, showMessage, hideMessage, setLoading, getReturnToParam } from './app.js';
 
 const form = document.getElementById('login-form');
 const message = document.getElementById('message');
@@ -13,8 +13,8 @@ form.addEventListener('submit', async (e) => {
   const password = document.getElementById('password').value;
 
   try {
-    await postJSON('/api/auth/login', { email, password });
-    window.location.href = '/me.html';
+    const data = await postJSON('/api/auth/login', { email, password, returnTo: getReturnToParam() });
+    window.location.href = data.redirectTo || '/me.html';
   } catch (err) {
     showMessage(message, err.message);
   } finally {

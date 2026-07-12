@@ -6,6 +6,7 @@ import { signSession, verifySession, setSessionCookie, clearSessionCookie, COOKI
 import { authenticate } from './middleware.js';
 import { sendPasswordResetEmail } from './email.js';
 import { authLimiter, passwordResetLimiter } from './rateLimit.js';
+import { safeReturnTo } from './returnTo.js';
 
 const router = Router();
 
@@ -58,7 +59,7 @@ router.post('/register', authLimiter, async (req, res, next) => {
 
     const token = signSession(user);
     setSessionCookie(res, token);
-    return res.status(201).json({ success: true, user: publicUser(user) });
+    return res.status(201).json({ success: true, user: publicUser(user), redirectTo: safeReturnTo(req.body?.returnTo) });
   } catch (err) {
     next(err);
   }
@@ -86,7 +87,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
 
     const token = signSession(user);
     setSessionCookie(res, token);
-    return res.json({ success: true, user: publicUser(user) });
+    return res.json({ success: true, user: publicUser(user), redirectTo: safeReturnTo(req.body?.returnTo) });
   } catch (err) {
     next(err);
   }

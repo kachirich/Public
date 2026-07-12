@@ -1,9 +1,7 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { PrintButton } from '@/components/print-button';
-import { getProfessional } from '@/lib/api';
 import { categoryLabel } from '@/lib/display';
-import { currentProfessionalId } from '@/lib/pro-actions';
+import { requireOwnedProfessional } from '@/lib/pro-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +9,8 @@ export const dynamic = 'force-dynamic';
 // The controls (print/download/back) are hidden when printing; only the
 // poster card lands on paper.
 export default async function PosterPage() {
-  const professionalId = await currentProfessionalId();
-  if (!professionalId) redirect('/pro');
-  const professional = await getProfessional(professionalId);
+  const professional = await requireOwnedProfessional();
+  const professionalId = professional.id;
 
   return (
     <>

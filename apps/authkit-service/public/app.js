@@ -37,3 +37,9 @@ export function setLoading(button, loading, label) {
 export function isPasswordStrong(password) {
   return /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/.test(password);
 }
+
+// The raw value is only ever sent to the server (which validates it and
+// echoes back a safe redirectTo, or null) — never used to navigate directly.
+export function getReturnToParam() {
+  return new URLSearchParams(window.location.search).get('returnTo') || undefined;
+}

@@ -8,8 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const authkitLoginUrl = process.env.AUTHKIT_LOGIN_URL || 'http://localhost:4000/login.html';
-
   return (
     <html lang="en">
       <body>
@@ -19,7 +17,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <nav className="header-nav">
             <Link href="/pro">For professionals</Link>
-            <a href={authkitLoginUrl}>Sign in</a>
+            {/* Routes through /pro, which the AuthKit middleware gate redirects
+                to login with a returnTo — so sign-in lands back in the portal
+                instead of dead-ending on the authkit-service profile page. */}
+            <Link href="/pro">Sign in</Link>
           </nav>
         </header>
         <main>{children}</main>

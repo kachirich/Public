@@ -25,7 +25,6 @@ const HOW_IT_WORKS = [
 export default async function LandingPage() {
   const { professionals } = await listProfessionals();
   const institutions = new Set(professionals.map((p) => p.affiliation).filter(Boolean));
-  const authkitLoginUrl = process.env.AUTHKIT_LOGIN_URL || 'http://localhost:4000/login.html';
 
   const categoryCounts = Object.keys(CATEGORY_COPY).map((category) => ({
     category,
@@ -48,9 +47,12 @@ export default async function LandingPage() {
           <Link className="button-link button-secondary" href="/pro">
             For professionals
           </Link>
-          <a className="button-link button-secondary" href={authkitLoginUrl}>
+          {/* Sign-in goes through /pro so the AuthKit middleware gate supplies
+              a returnTo and the user lands back in the portal after login,
+              rather than stranding on the authkit-service profile page. */}
+          <Link className="button-link button-secondary" href="/pro">
             Sign in
-          </a>
+          </Link>
         </div>
         {professionals.length > 0 && (
           <p className="pro-affiliation">
